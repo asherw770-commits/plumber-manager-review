@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>הזמנת עבודה · יהודה קליין אינסטלציה</title>
+<meta name="description" content="הזמנת עבודת אינסטלציה — תארו את התקלה, צרפו תמונות, ונחזור אליכם.">
+<meta name="theme-color" content="#faf8f3">
+<link rel="icon" href="/favicon-64.png?v=3" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&family=Frank+Ruhl+Libre:wght@400;500&display=swap">
+<style>
+  :root { --bg:#faf8f3; --card:#fff; --text:#17201c; --muted:#6b7068; --border:#ece7da; --field:#f3efe5; --brand:#0e4d3a; --brand-soft:#e3efe8; --ok:#1f8f5b; --err:#b8402b; --shadow:0 1px 0 rgba(40,30,10,.03),0 14px 34px -18px rgba(40,30,10,.22); }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1714; --card:#16211d; --text:#ece7da; --muted:#9fb0a7; --border:#1f2c27; --field:#1d2a25; --brand:#25805a; --brand-soft:#12301f; --ok:#5fd39a; --err:#ef8272; --shadow:0 14px 34px -18px rgba(0,0,0,.7); } }
+  * { box-sizing: border-box; }
+  html, body { overflow-x:hidden; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:Heebo, Rubik, system-ui, sans-serif; font-size:16px; line-height:1.5; }
+  .wrap { max-width:560px; margin:0 auto; padding:20px 16px calc(32px + env(safe-area-inset-bottom)); }
+  header { text-align:center; margin:8px 0 18px; }
+  .logo { width:132px; height:132px; border-radius:50%; display:block; margin:0 auto; box-shadow:0 12px 30px -10px rgba(0,0,0,.35); }
+  .services { display:flex; justify-content:center; flex-wrap:wrap; gap:6px; margin:10px 0 0; padding:0; list-style:none; font-size:13px; font-weight:600; }
+  .services li { background:var(--brand-soft); color:var(--brand); padding:5px 12px; border-radius:999px; }
+  .slogan { font-size:15px; color:var(--brand); font-weight:700; margin:6px 0 0; }
+  .strip { display:flex; gap:8px; margin:16px -16px 0; padding:0 16px 6px; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .strip::-webkit-scrollbar { display:none; }
+  .strip figure { flex:0 0 150px; margin:0; border-radius:18px; overflow:hidden; border:0; box-shadow:var(--shadow); background:var(--card); scroll-snap-align:start; }
+  .strip img { width:150px; height:150px; object-fit:cover; display:block; }
+  .strip figcaption { font-size:11px; color:var(--muted); padding:5px 6px; text-align:center; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .trust { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:12px; }
+  .trust div { background:var(--card); border:0; box-shadow:var(--shadow); border-radius:16px; padding:8px 6px; font-size:12px; font-weight:700; text-align:center; }
+  .trust b { display:block; font-size:16px; color:var(--brand); }
+  .reviews { margin-top:14px; display:grid; gap:8px; }
+  .review { background:var(--card); border:0; box-shadow:var(--shadow); border-radius:16px; padding:10px 12px; font-size:13px; line-height:1.5; }
+  .review .who { color:var(--muted); font-size:12px; margin-top:4px; }
+  .review .stars { color:#f5a623; letter-spacing:1px; font-size:12px; }
+  .wa { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:12px; min-height:52px; border-radius:999px; border:1px solid #25d366; color:#128c7e; background:transparent; font:inherit; font-size:15px; font-weight:700; text-decoration:none; }
+  .or { text-align:center; color:var(--muted); font-size:12px; margin-top:12px; }
+  .ac { position:relative; }
+  .ac-list { position:absolute; top:100%; inset-inline:0; z-index:5; margin:4px 0 0; padding:4px; list-style:none; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.18); max-height:260px; overflow:auto; }
+  .ac-list li { padding:12px; min-height:44px; border-radius:8px; cursor:pointer; font-size:16px; display:flex; align-items:center; }
+  .ac-list li:hover, .ac-list li.sel { background:var(--brand-soft); color:var(--brand); }
+  .ac-list li.empty { color:var(--muted); font-size:13px; cursor:default; }
+  .ok-mark { position:absolute; inset-inline-start:12px; top:50%; transform:translateY(-50%); color:var(--ok); font-weight:800; pointer-events:none; display:none; }
+  .ac.ok .ok-mark { display:block; }
+  .ac.ok input { padding-inline-start:32px; }
+  .row4 { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; }
+  .row4 input { min-width:0; }
+  .row4 label { margin-top:10px; font-size:13px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .chip { min-height:44px; padding:8px 16px; border-radius:999px; border:0; background:var(--field); color:var(--text); font:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+  .chip.on { background:var(--brand); border-color:var(--brand); color:#fff; }
+  input[disabled] { opacity:.55; }
+  .msg a { color:var(--brand); }
+  .van { margin-top:18px; border-radius:22px; overflow:hidden; border:0; box-shadow:var(--shadow); }
+  .van img { width:100%; height:auto; display:block; max-height:320px; object-fit:cover; object-position:center 42%; }
+  h1 { font-size:26px; margin:14px 0 4px; font-weight:800; letter-spacing:-.02em; }
+  .sub { color:var(--muted); font-size:14px; margin:0; }
+  .card { background:var(--card); border:0; border-radius:26px; padding:24px 20px; box-shadow:var(--shadow); }
+  label { display:block; font-weight:600; font-size:15px; margin:14px 0 6px; }
+  label:first-child { margin-top:0; }
+  .req { color:var(--err); }
+  input, textarea { width:100%; font:inherit; font-size:16px; padding:13px 15px; border:2px solid transparent; border-radius:14px; background:var(--field); color:var(--text); }
+  input:focus, textarea:focus { outline:none; border-color:var(--brand); background:var(--card); }
+  textarea { min-height:110px; resize:vertical; }
+  .hint { color:var(--muted); font-size:13px; margin-top:4px; }
+  .photos { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .ph { position:relative; width:88px; height:88px; border-radius:16px; overflow:hidden; border:0; }
+  .ph img { width:100%; height:100%; object-fit:cover; display:block; }
+  .ph button { position:absolute; top:2px; inset-inline-start:2px; width:40px; height:40px; border-radius:50%; border:0; background:rgba(0,0,0,.65); color:#fff; font-size:16px; cursor:pointer; }
+  .add-photo { width:88px; height:88px; border-radius:16px; border:2px dashed var(--border-strong,#d9d2c0); background:transparent; color:var(--muted); font:inherit; font-size:13px; cursor:pointer; display:grid; place-items:center; text-align:center; line-height:1.3; }
+  .send { width:100%; margin-top:22px; min-height:58px; border:0; border-radius:999px; background:var(--brand); color:#fff; font:inherit; font-size:18px; font-weight:700; cursor:pointer; }
+  .send[disabled] { opacity:.6; cursor:default; }
+  .msg { margin-top:12px; font-size:14px; font-weight:600; color:var(--err); min-height:20px; }
+  /* hidden in place — an off-screen offset widens an RTL page */
+  .hp { position:absolute; top:0; right:0; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); opacity:0; pointer-events:none; }
+  .done { text-align:center; padding:28px 16px; }
+  .done .big { font-size:56px; }
+  .done h2 { margin:8px 0; font-size:22px; }
+  footer { text-align:center; color:var(--muted); font-size:12px; margin-top:18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img class="logo" src="/logo.webp?v=3" alt="יהודה קליין אינסטלציה" width="150" height="150">
+    <h1>יהודה קליין אינסטלציה</h1>
+    <p class="slogan">עבודה נקייה ומקצועית</p>
+    <ul class="services"><li>דודי שמש</li><li>סתימות מורכבות</li><li>מיכלי מים לשבת וחג</li><li>אינסטלציה כללית</li></ul>
+    <p class="sub" style="margin-top:12px;">ספרו לנו מה צריך לתקן — נחזור אליכם בהקדם</p>
+    <div class="strip" aria-label="עבודות שביצענו">
+      <figure><img src="/work.webp?v=3" alt="יהודה מתקין דוד" width="150" height="150"><figcaption>🔧 יהודה בעבודה</figcaption></figure>
+      <figure><img src="/g1.webp?v=3" alt="התקנת דוד חשמל" width="150" height="150"><figcaption>🚿 דוד חשמל</figcaption></figure>
+      <figure><img src="/g2.webp?v=3" alt="קולטים סולאריים על גג" width="150" height="150"><figcaption>☀️ מערכת סולארית</figcaption></figure>
+      <figure><img src="/roof.webp?v=3" alt="דודי שמש על גג" width="150" height="150" loading="lazy"><figcaption>☀️ דודי שמש</figcaption></figure>
+      <figure><img src="/g3.webp?v=3" alt="דוד שמש עם קולט" width="150" height="150" loading="lazy"><figcaption>☀️ דוד שמש + קולט</figcaption></figure>
+      <figure><img src="/g4.webp?v=3" alt="עבודת צנרת" width="150" height="150" loading="lazy"><figcaption>🔩 צנרת ומסננים</figcaption></figure>
+      <figure><img src="/g5.webp?v=3" alt="מיכל מים על גג" width="150" height="150" loading="lazy"><figcaption>💧 מיכלי מים</figcaption></figure>
+      <figure><img src="/g6.webp?v=3" alt="דוד שמש חדש" width="150" height="150" loading="lazy"><figcaption>☀️ התקנת דוד שמש</figcaption></figure>
+      <figure><img src="/g7.webp?v=3" alt="סיפון מתחת לכיור" width="150" height="150" loading="lazy"><figcaption>🚰 סתימות וסיפונים</figcaption></figure>
+      <figure><img src="/g8.webp?v=3" alt="מחמם מים" width="150" height="150" loading="lazy"><figcaption>🔥 מחממי מים</figcaption></figure>
+    </div>
+    <div class="trust">
+      <div><b>⭐ 5.0</b>ביקורות בגוגל</div>
+      <div><b>📞</b>מענה מהיר</div>
+      <div><b>✔</b>אחריות על העבודה</div>
+    </div>
+    <div class="reviews" aria-label="לקוחות ממליצים">
+      <div class="review"><div class="stars">★★★★★</div>„שירות מצוין, אמינות גבוהה, ואיכות עבודה גבוהה”<div class="who">— Hershy Rozenfeld, ביקורת בגוגל</div></div>
+      <div class="review"><div class="stars">★★★★★</div>„יהודה התותח הזמנתי אותו אצלי בבית לעבודת אינסטלציה הגיע ממש מהר עושה עבודה טובה ובמחיר טוב ממליץ בחום”<div class="who">— יצחק ברנשטיין, ביקורת בגוגל</div></div>
+      <div class="review"><div class="stars">★★★★★</div>„אני סומך עליו בכל המושג אינסטלציה תשמרו לכם לעת הצורך”<div class="who">— yechiel Zlotnick, ביקורת בגוגל</div></div>
+    </div>
+    <a class="wa" href="https://wa.me/972534440194?text=%D7%A9%D7%9C%D7%95%D7%9D%20%D7%99%D7%94%D7%95%D7%93%D7%94%2C%20%D7%90%D7%A0%D7%99%20%D7%A6%D7%A8%D7%99%D7%9A%20%D7%90%D7%99%D7%A0%D7%A1%D7%98%D7%9C%D7%98%D7%95%D7%A8%20%D7%9C" target="_blank" rel="noopener">💬 מעדיפים וואטסאפ? כתבו לנו ישירות</a>
+    <div class="or">— או מלאו את הטופס הקצר, ונחזור אליכם —</div>
+  </header>
+
+  <form class="card" id="orderForm" novalidate>
+    <label for="name">שם מלא <span class="req">*</span></label>
+    <input id="name" name="name" autocomplete="name" maxlength="60" required>
+
+    <label for="phone">טלפון <span class="req">*</span></label>
+    <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="050-0000000" dir="ltr" style="text-align:right;" required>
+
+    <label for="city">עיר <span class="req">*</span></label>
+    <div class="ac" id="cityAc"><span class="ok-mark">✓</span><input id="city" name="city" autocomplete="off" maxlength="60" placeholder="התחילו להקליד — למשל: ירושלים" required><ul class="ac-list" id="cityList" hidden></ul></div>
+
+    <label for="street">רחוב <span class="req">*</span></label>
+    <div class="ac" id="streetAc"><span class="ok-mark">✓</span><input id="street" name="street" autocomplete="off" maxlength="80" placeholder="התחילו להקליד — או כתבו ידנית" required><ul class="ac-list" id="streetList" hidden></ul></div>
+    <div class="hint">הרחובות מגיעים מהמאגר הרשמי של הרחובות בישראל</div>
+
+    <div class="row4">
+      <div><label for="num">מספר בית <span class="req">*</span></label><input id="num" name="num" maxlength="12" placeholder="12 / 12א" autocomplete="off" required></div>
+      <div><label for="entrance">כניסה</label><input id="entrance" name="entrance" maxlength="8" placeholder="א"></div>
+      <div><label for="floor">קומה</label><input id="floor" name="floor" maxlength="8" placeholder="3" autocomplete="off"></div>
+      <div><label for="apt">דירה</label><input id="apt" name="apt" maxlength="8" placeholder="7" autocomplete="off"></div>
+    </div>
+
+    <label for="addrNotes">איך מגיעים? <span style="font-weight:400;color:var(--muted);">(לא חובה)</span></label>
+    <input id="addrNotes" name="addrNotes" maxlength="160" placeholder="קוד לשער, אינטרקום, חניה, כלב בחצר…">
+
+    <label>מתי נוח שנגיע?</label>
+    <div class="chips" id="whenChips">
+      <button type="button" class="chip" data-when="בהקדם">בהקדם</button>
+      <button type="button" class="chip" data-when="בוקר">בוקר</button>
+      <button type="button" class="chip" data-when="צהריים">צהריים</button>
+      <button type="button" class="chip" data-when="אחר הצהריים / ערב">אחה"צ / ערב</button>
+      <button type="button" class="chip" data-when="דחוף — נזילה / סתימה" style="border-color:var(--err);color:var(--err);">🚨 דחוף</button>
+    </div>
+    <input type="hidden" id="when" name="when">
+
+    <label for="desc">מה התקלה / העבודה? <span class="req">*</span></label>
+    <textarea id="desc" name="desc" maxlength="1500" placeholder="למשל: נזילה מתחת לכיור במטבח, התחילה אתמול" required></textarea>
+
+    <label>תמונות וסרטון (לא חובה)</label>
+    <div class="photos" id="photos">
+      <button type="button" class="add-photo" id="addPhoto">📷<br>תמונה / סרטון</button>
+    </div>
+    <input type="file" id="photoInput" accept="image/*,video/*" multiple hidden>
+    <div class="hint" id="mediaHint">עד 4 תמונות וסרטון קצר אחד (עד 15 שניות, בלי קול). תמונה או סרטון של התקלה עוזרים לנו להגיע מוכנים</div>
+
+    <!-- bots fill this; people never see it -->
+    <div class="hp" aria-hidden="true"><label for="website">אתר</label><input id="website" name="website" tabindex="-1" autocomplete="off"></div>
+
+    <button class="send" id="send" type="submit">שליחה</button>
+    <div class="msg" id="msg" role="alert"></div>
+  </form>
+
+  <div class="card done" id="done" hidden>
+    <div class="big">✅</div>
+    <h2>קיבלנו את הפנייה!</h2>
+    <p class="sub">נחזור אליכם בהקדם.</p>
+  </div>
+
+  <div class="van"><img src="/van.jpg?v=3" alt="הרכב והכלים של יהודה קליין" loading="lazy" width="900" height="1600"></div>
+  <footer>יהודה קליין אינסטלציה · עבודה נקייה ומקצועית</footer>
+</div>
+<script>
+(function () {
+  const MAX = 4;           // photos
+  const MAX_VIDEO_SEC = 15;
+  const photos = []; // data URLs, already shrunk
+  let video = null;  // one short clip: { url (data URL), mime }
+  const box = document.getElementById('photos'), input = document.getElementById('photoInput');
+  const msg = document.getElementById('msg'), send = document.getElementById('send');
+
+  // Shrink on the phone before sending: longest side 1280px, JPEG, ≤ ~300KB.
+  function shrink(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        let side = 1280, q = 0.72, out = '';
+        for (let tries = 0; tries < 5; tries++) {
+          const k = Math.min(1, side / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          out = c.toDataURL('image/jpeg', q);
+          if (out.length <= 400000) break;
+          side = Math.round(side * 0.8); q = Math.max(0.5, q - 0.08);
+        }
+        URL.revokeObjectURL(url);
+        out.length <= 420000 ? resolve(out) : reject(new Error('big'));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('read')); };
+      img.src = url;
+    });
+  }
+  // Re-encode a clip on the phone: 15 s max, ≤ 480px wide, ~350 kbit/s, no audio — about 0.7 MB, small enough to travel with the order.
+  function compressVideo(file, onProgress) {
+    return new Promise((resolve, reject) => {
+      if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) return reject(new Error('unsupported'));
+      const mime = ['video/mp4', 'video/webm;codecs=vp8', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
+      if (!mime) return reject(new Error('unsupported'));
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
+      const url = URL.createObjectURL(file);
+      let done = false;
+      let recorder = null;
+      const fail = e => { if (done) return; done = true; clearTimeout(watchdog); try { recorder && recorder.state !== 'inactive' && recorder.stop(); } catch (_) {} try { v.pause(); } catch (_) {} URL.revokeObjectURL(url); reject(e); };
+      // Never leave the form stuck: a clip that cannot be played or encoded within ~40 s is dropped with a clear message.
+      const watchdog = setTimeout(() => fail(new Error('timeout')), 40000);
+      v.onerror = () => fail(new Error('read'));
+      v.onloadedmetadata = () => {
+        const k = Math.min(1, 480 / Math.max(v.videoWidth, v.videoHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.max(2, Math.round(v.videoWidth * k / 2) * 2); c.height = Math.max(2, Math.round(v.videoHeight * k / 2) * 2);
+        const ctx = c.getContext('2d');
+        const rec = new MediaRecorder(c.captureStream(15), { mimeType: mime, videoBitsPerSecond: 350000 }); recorder = rec;
+        const chunks = [];
+        rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+        rec.onstop = () => {
+          if (done) return; done = true; clearTimeout(watchdog); URL.revokeObjectURL(url);
+          const blob = new Blob(chunks, { type: mime.split(';')[0] });
+          const fr = new FileReader();
+          fr.onload = () => (String(fr.result).length <= 1250000 ? resolve({ url: fr.result, mime: blob.type }) : reject(new Error('big')));
+          fr.onerror = () => reject(new Error('read'));
+          fr.readAsDataURL(blob);
+        };
+        const limit = Math.min(MAX_VIDEO_SEC, v.duration || MAX_VIDEO_SEC);
+        const draw = () => {
+          if (done) return;
+          ctx.drawImage(v, 0, 0, c.width, c.height);
+          if (onProgress) onProgress(Math.min(1, v.currentTime / limit));
+          if (v.ended || v.currentTime >= limit) { try { rec.stop(); } catch (_) {} v.pause(); return; }
+          requestAnimationFrame(draw);
+        };
+        v.onplaying = () => { rec.start(500); draw(); };
+        v.play().catch(e => fail(e));
+      };
+      v.src = url;
+    });
+  }
+  function draw() {
+    box.querySelectorAll('.ph').forEach(n => n.remove());
+    if (video) {
+      const d = document.createElement('div'); d.className = 'ph';
+      d.innerHTML = '<video muted playsinline aria-label="סרטון"></video><button type="button" aria-label="הסרת סרטון">×</button>';
+      const vv = d.querySelector('video'); vv.src = video.url; vv.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:12px;';
+      d.querySelector('button').onclick = () => { video = null; draw(); };
+      box.insertBefore(d, document.getElementById('addPhoto'));
+    }
+    photos.forEach((p, i) => {
+      const d = document.createElement('div'); d.className = 'ph';
+      d.innerHTML = `<img alt="תמונה ${i + 1}"><button type="button" aria-label="הסרת תמונה">×</button>`;
+      d.querySelector('img').src = p;
+      d.querySelector('button').onclick = () => { photos.splice(i, 1); draw(); };
+      box.insertBefore(d, document.getElementById('addPhoto'));
+    });
+    document.getElementById('addPhoto').style.display = (photos.length >= MAX && video) ? 'none' : '';
+  }
+  // ── Address: city → street from the official street register (via /api/address) ──
+  // One id per visit: a retry after a lost answer is recognised on the server and never creates a second order.
+  // Kept with the draft (until a successful send): a reload after a lost answer must reuse it, or the retry becomes a second order.
+  const REQUEST_ID = (() => {
+    try { const k = localStorage.getItem('pm_order_rid'); if (k && /^[A-Za-z0-9_-]{8,40}$/.test(k)) return k; } catch (_) {}
+    const id = (window.crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2, 10)).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+    try { localStorage.setItem('pm_order_rid', id); } catch (_) {}
+    return id;
+  })();
+  // The typed text survives a reload / a dropped connection.
+  const DRAFT_FIELDS = ['name', 'phone', 'city', 'street', 'num', 'entrance', 'floor', 'apt', 'addrNotes', 'desc'];
+  try {
+    const d = JSON.parse(localStorage.getItem('pm_order_draft') || '{}');
+    DRAFT_FIELDS.forEach(k => { const el = document.getElementById(k); if (el && d[k] && !el.value) el.value = d[k]; });
+  } catch (_) {}
+  document.getElementById('orderForm').addEventListener('input', () => {
+    try { const d = {}; DRAFT_FIELDS.forEach(k => { const el = document.getElementById(k); if (el) d[k] = el.value; }); localStorage.setItem('pm_order_draft', JSON.stringify(d)); } catch (_) {}
+  });
+  const picked = { city: null, street: null };
+  const cityEl = document.getElementById('city'), streetEl = document.getElementById('street');
+  function wireAc(inp, listEl, box, fetcher, onPick) {
+    let timer = null, items = [], sel = -1, seq = 0;
+    const hide = () => { listEl.hidden = true; listEl.innerHTML = ''; sel = -1; };
+    const show = (rows, offline) => {
+      items = rows;
+      if (!rows.length) { listEl.innerHTML = `<li class="empty">${offline ? 'המאגר לא זמין כרגע — אפשר לכתוב ידנית' : 'לא נמצא — אפשר לכתוב ידנית'}</li>`; listEl.hidden = false; return; }
+      listEl.innerHTML = rows.map((r, i) => `<li data-i="${i}">${r.name.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</li>`).join('');
+      listEl.hidden = false;
+    };
+    inp.addEventListener('input', () => {
+      box.classList.remove('ok'); onPick(null);
+      clearTimeout(timer);
+      const q = inp.value.trim();
+      if (q.length < 1) { hide(); return; }
+      timer = setTimeout(async () => {
+        const my = ++seq;
+        try { const j = await fetcher(q); if (my !== seq) return; show(j.items || [], !!j.offline); }
+        catch (_) { if (my === seq) show([], true); }
+      }, 180);
+    });
+    listEl.addEventListener('mousedown', (e) => {
+      const li = e.target.closest('li[data-i]'); if (!li) return;
+      e.preventDefault();
+      const r = items[Number(li.dataset.i)]; inp.value = r.name; box.classList.add('ok'); onPick(r); hide();
+    });
+    inp.addEventListener('keydown', (e) => {
+      if (listEl.hidden) return;
+      const lis = [...listEl.querySelectorAll('li[data-i]')];
+      if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, lis.length - 1); }
+      else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); }
+      else if (e.key === 'Enter') { if (sel >= 0) { e.preventDefault(); lis[sel].dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); } return; }
+      else if (e.key === 'Escape') { hide(); return; }
+      else return;
+      e.preventDefault(); lis.forEach((li, i) => li.classList.toggle('sel', i === sel));
+    });
+    inp.addEventListener('blur', () => setTimeout(hide, 150));
+  }
+  const api = (params) => fetch('/api/address?' + new URLSearchParams(params).toString(), { cache: 'force-cache' }).then(r => r.json());
+  wireAc(cityEl, document.getElementById('cityList'), document.getElementById('cityAc'), q => api({ type: 'city', q }), (r) => {
+    picked.city = r;
+    picked.street = null; document.getElementById('streetAc').classList.remove('ok');
+    streetEl.placeholder = r ? `רחוב ב${r.name}` : 'רחוב';
+    if (r) { streetEl.value = ''; setTimeout(() => streetEl.focus(), 50); }
+  });
+  wireAc(streetEl, document.getElementById('streetList'), document.getElementById('streetAc'), q => picked.city ? api({ type: 'street', code: picked.city.code, q }) : Promise.resolve({ items: [] }), (r) => { picked.street = r; });
+  document.getElementById('whenChips').addEventListener('click', (e) => {
+    const c = e.target.closest('.chip'); if (!c) return;
+    const on = !c.classList.contains('on');
+    document.querySelectorAll('#whenChips .chip').forEach(x => x.classList.remove('on'));
+    c.classList.toggle('on', on);
+    document.getElementById('when').value = on ? c.dataset.when : '';
+  });
+
+  document.getElementById('addPhoto').onclick = () => input.click();
+  input.onchange = async () => {
+    const files = [...input.files];
+    input.value = '';
+    msg.textContent = '';
+    send.disabled = true;
+    try {
+    for (const f of files) {
+      if (/^video\//.test(f.type)) {
+        if (video) { msg.textContent = 'אפשר לצרף סרטון אחד בלבד'; continue; }
+        const hint = document.getElementById('mediaHint'), old = hint.textContent;
+        send.disabled = true;
+        try {
+          video = await compressVideo(f, p => { hint.textContent = 'מכין את הסרטון… ' + Math.round(p * 100) + '%'; });
+        } catch (e) {
+          msg.textContent = (e && e.message === 'unsupported') ? 'הדפדפן הזה לא תומך בצירוף סרטון — אפשר לצרף תמונה, או לשלוח לנו את הסרטון בוואטסאפ' : 'לא הצלחנו לצרף את הסרטון — אפשר לנסות סרטון קצר יותר';
+        }
+        hint.textContent = old; send.disabled = false;
+      } else if (photos.length < MAX) {
+        try { photos.push(await shrink(f)); } catch (_) { msg.textContent = 'לא הצלחנו לצרף אחת התמונות — אפשר לנסות תמונה אחרת'; }
+      } else { msg.textContent = 'אפשר לצרף עד ' + MAX + ' תמונות'; }
+    }
+    } finally { send.disabled = false; }
+    draw();
+  };
+
+  document.getElementById('orderForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    msg.textContent = '';
+    const f = e.target;
+    const v = id => (document.getElementById(id).value || '').trim();
+    const city = v('city'), street = v('street'), num = v('num'), entrance = v('entrance'), floor = v('floor'), apt = v('apt'), notes = v('addrNotes');
+    if (!city || !street || !num) { msg.textContent = 'נא למלא עיר, רחוב ומספר בית'; (!city ? cityEl : !street ? streetEl : document.getElementById('num')).focus(); return; }
+    const address = `${street} ${num}${entrance ? ' כניסה ' + entrance : ''}, ${city}`;
+    const addressDetails = [floor && `קומה ${floor}`, apt && `דירה ${apt}`, notes].filter(Boolean).join(' · ');
+    const addr = { city, street, num, entrance, floor, apt, notes, verified: !!(picked.city && picked.street) };
+    const body = { name: f.name.value.trim(), phone: f.phone.value.trim(), address, addressDetails, addr, when: v('when'), desc: f.desc.value.trim(), website: f.website.value, photos, videos: video ? [video.url] : [] };
+    if (!body.name) { msg.textContent = 'נא למלא שם'; f.name.focus(); return; }
+    const digits = body.phone.replace(/\D/g, '').replace(/^00972/, '972').replace(/^972/, '0').replace(/^00/, '0');
+    if (!/^(05\d{8}|07\d{8}|0[2-489]\d{7})$/.test(digits)) { msg.textContent = 'מספר הטלפון לא נראה תקין — למשל 050-1234567'; f.phone.focus(); return; }
+    if (!body.desc) { msg.textContent = 'נא לתאר מה התקלה'; f.desc.focus(); return; }
+    body.requestId = REQUEST_ID;
+    send.disabled = true; send.textContent = 'שולח…';
+    const ctl = new AbortController(), killer = setTimeout(() => ctl.abort(), 60000);
+    try {
+      const r = await fetch('/api/order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal });
+      clearTimeout(killer);
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.ok) { f.hidden = true; try { localStorage.removeItem('pm_order_draft'); localStorage.removeItem('pm_order_rid'); } catch (_) {} const dn = document.getElementById('done'); dn.hidden = false; dn.scrollIntoView({ block: 'center' }); return; }
+      if (r.status === 503) { msg.innerHTML = 'הטופס בהפעלה — בינתיים שלחו לנו את הפרטים בוואטסאפ: <a href="https://wa.me/972534440194?text=' + encodeURIComponent(`שלום, ${body.name}\n${body.address}${body.addressDetails ? ' · ' + body.addressDetails : ''}\n${body.desc}${body.when ? '\nמתי נוח: ' + body.when : ''}`) + '" target="_blank" rel="noopener" style="color:var(--brand);font-weight:700;">💬 לפתוח וואטסאפ עם הפרטים שמילאתם</a>'; }
+      else if (r.status === 429) { msg.innerHTML = (j.message || 'כבר התקבלו פניות') + ' — <a href="' + (j.wa || 'https://wa.me/972534440194') + '" target="_blank" rel="noopener" style="font-weight:700;">💬 וואטסאפ</a>'; }
+      else msg.innerHTML = (j.message || 'משהו השתבש — נסו שוב (הפרטים שמילאתם נשמרו)').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])) + ' — או כתבו לנו <a href="https://wa.me/972534440194" target="_blank" rel="noopener" style="font-weight:700;">💬 בוואטסאפ</a>';
+    } catch (err) {
+      clearTimeout(killer);
+      msg.innerHTML = (err && err.name === 'AbortError' ? 'השליחה לוקחת יותר מדי זמן (קליטה חלשה?) — אפשר לנסות שוב, או לשלוח לנו בוואטסאפ: ' : 'אין חיבור לאינטרנט — נסו שוב, או כתבו לנו בוואטסאפ: ') + '<a href="https://wa.me/972534440194" target="_blank" rel="noopener" style="font-weight:700;">💬 וואטסאפ</a>';
+    }
+    send.disabled = false; send.textContent = 'שליחה';
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+node_modules
+.vercel
+.env
+.env.local
+.DS_Store
+*.log
+
+# real business data must never be committed
+יהודה-גיבוי-*.json
+נתוני-המערכת-*.json
+*-backup.json
+harness-out/

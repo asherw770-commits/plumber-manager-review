@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#faf8f3">
+<title>סיווג סוגי עבודה · יהודה קליין אינסטלציה</title>
+<link rel="icon" href="/favicon-64.png?v=3" type="image/png">
+<style>
+  :root { --bg:#faf8f3; --card:#fff; --text:#17201c; --muted:#6b7068; --border:#ece7da; --field:#f3efe5; --brand:#0e4d3a; --brand-soft:#e3efe8; --ok:#1f8f5b; --warn:#a15c00; --danger:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1714; --card:#16211d; --text:#ece7da; --muted:#9fb0a7; --border:#1f2c27; --field:#1d2a25; --brand:#6fcaa5; --brand-soft:#1c3a2f; --ok:#4fd08f; --warn:#f0b35a; --danger:#ff8a80; } }
+  * { box-sizing:border-box; }
+  html, body { overflow-x:hidden; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system, "Segoe UI", Heebo, Arial, sans-serif; font-size:16px; line-height:1.5; }
+  .wrap { max-width:640px; margin:0 auto; padding:16px 16px calc(40px + env(safe-area-inset-bottom)); }
+  h1 { font-size:22px; margin:6px 0 4px; color:var(--brand); }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 12px; }
+  .bar { position:sticky; top:0; z-index:5; background:var(--bg); padding:8px 0 10px; border-bottom:1px solid var(--border); }
+  .prog { height:10px; border-radius:6px; background:var(--field); overflow:hidden; margin:6px 0; }
+  .prog > i { display:block; height:100%; background:var(--ok); width:0; transition:width .3s; }
+  .tabs { display:flex; gap:8px; margin:8px 0; }
+  .tabs button { flex:1; min-height:44px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:15px; font-weight:700; }
+  .tabs button[aria-pressed="true"] { background:var(--brand); color:#fff; border-color:var(--brand); }
+  input[type=search] { width:100%; min-height:48px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:16px; padding:8px 12px; }
+  select { min-height:48px; border-radius:12px; border:1px solid var(--border); background:var(--field); color:var(--text); font-size:16px; padding:8px 10px; max-width:100%; }
+  .row { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px; margin:10px 0; display:grid; gap:8px; }
+  .row.done { border-color:var(--ok); }
+  .name { font-weight:700; word-break:break-word; overflow-wrap:anywhere; }
+  .cnt { color:var(--muted); font-size:13px; font-weight:400; }
+  .ok { color:var(--ok); font-size:13px; font-weight:700; min-height:18px; }
+  .bulk { background:var(--brand-soft); border-radius:14px; padding:12px; margin:10px 0; display:grid; gap:8px; }
+  .bulk b { color:var(--brand); }
+  .empty { text-align:center; padding:36px 12px; color:var(--muted); }
+  .empty big { display:block; font-size:44px; }
+  .err { background:#fdecea; color:var(--danger); border-radius:12px; padding:12px; margin:12px 0; }
+  .note { font-size:13px; color:var(--muted); margin:14px 0 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏷 לאיזה סוג שייכת כל עבודה?</h1>
+  <p class="sub">בוחרים לכל עבודה את הסוג שלה. כל העבודות שנקראות <b>בדיוק אותו שם</b> מסומנות יחד. שומר לבד — אין כפתור שמירה. אפשר לחזור לכאן בכל זמן, יוצגו רק עבודות חדשות שעוד לא סומנו.</p>
+  <div id="app"><div class="empty">טוען…</div></div>
+</div>
+<script>
+(function () {
+  var T = new URLSearchParams(location.hash.replace(/^#/, '')).get('t') || '';
+  try { if (T) localStorage.setItem('classifyT', T); else T = localStorage.getItem('classifyT') || ''; } catch (e) {}   // the link is permanent: a home-screen shortcut or a reload keeps working on this phone
+  if (location.hash) { try { history.replaceState(null, '', location.pathname); } catch (e) {} }   // the secret leaves the address bar and the browser history
+  var app = document.getElementById('app');
+  var D = { names: [], cats: [] }, filter = 'todo', q = '', session = new Set();
+  var NEW = '__new', NONE = '';
+  function el(tag, props, kids) { var e = document.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'text') e.textContent = props[k]; else if (k === 'class') e.className = props[k]; else e.setAttribute(k, props[k]); }); (kids || []).forEach(function (c) { e.appendChild(c); }); return e; }
+  function api(method, body) {
+    return fetch('/api/classify', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ t: T }, body)) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(r.status === 403 ? 'forbidden' : (j && j.error) || 'server'); return j; }); });
+  }
+  function fail(e) {
+    var m = e && e.message === 'forbidden' ? 'הקישור לא תקף (אולי הוחלף). בקש מאשר קישור חדש.' : e && e.message === 'limit' ? 'יותר מדי פעולות להיום — נסה מחר.' : 'לא הצלחתי לשמור — בדוק קליטה ונסה שוב.';
+    var old = document.getElementById('err'); if (old) old.remove();
+    var box = el('div', { class: 'err', id: 'err', role: 'alert', text: m });
+    app.insertBefore(box, app.firstChild); setTimeout(function () { box.remove(); }, 6000);
+  }
+  function visible() {
+    var s = q.trim();
+    return D.names.filter(function (n) {
+      if (filter === 'todo' && n.cat && !session.has(n.key)) return false;
+      return !s || n.key.indexOf(s) !== -1;
+    });
+  }
+  function catSelect(cur, onPick, withNone) {
+    var s = el('select', { 'aria-label': 'בחר סוג' });
+    s.appendChild(el('option', { value: '', text: withNone ? '— בחר סוג —' : '— בחר סוג —' }));
+    D.cats.forEach(function (c) { var o = el('option', { value: c, text: c }); if (c === cur) o.selected = true; s.appendChild(o); });
+    s.appendChild(el('option', { value: NEW, text: '➕ סוג חדש…' }));
+    if (cur) s.appendChild(el('option', { value: '__none', text: '✖ בטל סימון' }));
+    s.addEventListener('change', function () { var v = s.value; s.value = cur || ''; onPick(v); });
+    return s;
+  }
+  function pick(v, apply) {
+    if (v === NEW) {
+      var name = (prompt('שם הסוג החדש (למשל: נזילות ואיתור)') || '').trim().slice(0, 30);
+      if (!name) return;
+      apply(name, name);
+    } else if (v === '__none') apply('', null);
+    else if (v) apply(v, null);
+  }
+  function save(keys, cat, newCat, done) {
+    api('POST', { items: keys.map(function (k) { return { key: k, cat: cat }; }), newCat: newCat || undefined }).then(function (j) {
+      keys.forEach(function (k) { session.add(k); });
+      D = { names: j.names, cats: j.cats }; done && done(); draw(true);
+    }).catch(fail);
+  }
+  function draw(keepScroll) {
+    var y = window.scrollY;
+    var total = D.names.length, marked = D.names.filter(function (n) { return n.cat; }).length;
+    app.textContent = '';
+    var pct = total ? Math.round(marked / total * 100) : 100;
+    var bar = el('div', { class: 'bar' }, [
+      el('div', { text: 'סומנו ' + marked + ' מתוך ' + total + ' סוגי עבודה' + (total && marked === total ? ' ✅' : ''), style: 'font-weight:700' }),
+      el('div', { class: 'prog' }, [el('i', { style: 'width:' + pct + '%' })])
+    ]);
+    var tabs = el('div', { class: 'tabs' });
+    [['todo', 'עוד לא סומנו (' + (total - marked) + ')'], ['all', 'הכל (' + total + ')']].forEach(function (t) {
+      var b = el('button', { type: 'button', 'aria-pressed': String(filter === t[0]), text: t[1] });
+      b.addEventListener('click', function () { filter = t[0]; session = new Set(); draw(); });
+      tabs.appendChild(b);
+    });
+    bar.appendChild(tabs);
+    var inp = el('input', { type: 'search', placeholder: 'חיפוש (למשל: סתימה)', 'aria-label': 'חיפוש', value: q });
+    inp.addEventListener('input', function () { q = inp.value; var pos = inp.selectionStart; drawList(); });
+    bar.appendChild(inp);
+    app.appendChild(bar);
+    app.appendChild(el('div', { id: 'list' }));
+    drawList();
+    if (keepScroll) window.scrollTo(0, y);
+  }
+  function drawList() {
+    var list = document.getElementById('list'); list.textContent = '';
+    var rows = visible();
+    if (q.trim() && rows.length > 1) {
+      var bs = catSelect('', function (v) { pick(v, function (cat, nc) {
+        if (!confirm('לסמן את כל ' + rows.length + ' התוצאות כ"' + cat + '"?')) return;
+        save(rows.map(function (n) { return n.key; }), cat, nc);
+      }); });
+      list.appendChild(el('div', { class: 'bulk' }, [el('div', {}, [el('b', { text: 'סימון כולם בבת אחת: ' }), el('span', { text: rows.length + ' עבודות שנמצאו' })]), bs]));
+    }
+    if (!rows.length) {
+      var allDone = !q.trim() && filter === 'todo';
+      list.appendChild(el('div', { class: 'empty' }, [el('big', { text: allDone ? '✅' : '🔍' }), el('div', { text: allDone ? 'הכול מסומן. תודה! כשיתווספו עבודות חדשות אפשר לחזור לכאן.' : 'לא נמצאו עבודות.' })]));
+      return;
+    }
+    rows.forEach(function (n) {
+      var row = el('div', { class: 'row' + (n.cat ? ' done' : '') });
+      row.appendChild(el('div', { class: 'name' }, [el('span', { text: n.key }), el('span', { class: 'cnt', text: '  · ' + n.count + (n.count === 1 ? ' עבודה' : ' עבודות') })]));
+      row.appendChild(catSelect(n.cat, function (v) { pick(v, function (cat, nc) { save([n.key], cat, nc); }); }));
+      row.appendChild(el('div', { class: 'ok', text: n.cat ? '✓ ' + n.cat : '' }));
+      list.appendChild(row);
+    });
+  }
+  if (!T) { app.textContent = ''; fail({ message: 'forbidden' }); return; }
+  api('POST', {}).then(function (j) { D = { names: j.names, cats: j.cats }; draw(); }).catch(function (e) { app.textContent = ''; fail(e); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "functions": {
+    "api/order.js": { "maxDuration": 30 },
+    "api/sync-sheet.js": { "maxDuration": 60 },
+    "api/sync-sheet-run.js": { "maxDuration": 60 },
+    "api/backup-drive.js": { "maxDuration": 60 },
+    "api/backup-drive-run.js": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/sync-sheet", "schedule": "0 6 * * *" },
+    { "path": "/api/backup-drive", "schedule": "50 20 * * *" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=()" },
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://www.gstatic.com https://fonts.googleapis.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://firebaseinstallations.googleapis.com wss://*.firebaseio.com https://accounts.google.com; img-src 'self' data: https:; media-src 'self' https: blob: data:; frame-src 'self' https://accounts.google.com; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" },
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    }
+  ]
+}

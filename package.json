@@ -1,0 +1,12 @@
+{
+  "name": "plumber-manager",
+  "private": true,
+  "description": "Plumber business app — static single-page app + a few Vercel functions (customer orders, push, sheet sync, backup, work-type classify link)",
+  "dependencies": {
+    "firebase-admin": "12.7.0",
+    "web-push": "3.6.7"
+  },
+  "scripts": {
+    "test": "node tests/run-all.js"
+  }
+}

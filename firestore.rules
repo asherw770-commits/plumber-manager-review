@@ -1,0 +1,219 @@
+rules_version = '2';
+
+// Plumber Manager - Firestore Security Rules
+// Roles: admin (secretary Asher), manager (business advisor Yechiel), owner (Yehuda)
+// admin has full control. manager can read business data + edit tx/tasks.
+// owner (Yehuda) can read the state doc and edit only his own view.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Get the current user's role from their profile doc
+    // A suspended account (users/{uid}.disabled == true, set by the admin in the app) has no role at all: it reads and writes nothing.
+    function role() {
+      let u = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return u.get('disabled', false) == true ? 'disabled' : u.role;
+    }
+    function isSignedIn() {
+      // Explicitly reject anonymous auth - only email/password users allowed
+      return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    function isAdmin() { return isSignedIn() && role() == 'admin'; }
+    function isManager() { return isSignedIn() && role() == 'manager'; }
+    function isOwner() { return isSignedIn() && role() == 'owner'; }
+    function isStaff() { return isAdmin() || isManager(); }
+    // Anyone with a real role profile. A bare signed-in account (e.g. created through the public
+    // sign-up API with the public web key) has no users/{uid} doc, so it must read NOTHING (scan 5.10).
+    function hasRole() { return isStaff() || isOwner(); }
+    // A user flagged needsApproval (new users) may not write the shared document directly — only through the owner queue.
+    function userNeedsApproval() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('needsApproval', false) == true; }
+    // The known super-admin UID (Asher). Only he can bootstrap his own admin
+    // profile. Everyone else needs to be created by an existing admin.
+    function isBootstrapAdmin() {
+      return request.auth.uid == 'JgQOxlW5UJdRWNHu94knOf0FJed2';
+    }
+    function isSuperUid(u) {
+      return u == 'JgQOxlW5UJdRWNHu94knOf0FJed2';
+    }
+    // The fence against a STALE copy of the app (2.10: an old device re-pushed rows that
+    // had been deleted). Every write of state/current and state/inbox carries
+    // clientVersion (CLIENT_VERSION in index.html). While state/config has no
+    // minClientVersion this always passes — publishing these rules changes nothing.
+    // Setting state/config.minClientVersion = N makes Firestore refuse any write from
+    // an app older than N; that device shows a sync error until it reloads the new app.
+    function clientOk() {
+      let cfg = /databases/$(database)/documents/state/config;
+      return !exists(cfg) || request.resource.data.get('clientVersion', 0) >= get(cfg).data.get('minClientVersion', 0);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // USERS - profile docs. Only admin creates/edits. Users can read own.
+    // ══════════════════════════════════════════════════════════
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      // Only existing admins can create profiles. Exception: the known
+      // super-admin UID (Asher) can bootstrap his own admin profile ONCE
+      // (only if it doesn't already exist).
+      allow create: if isAdmin() ||
+        (isBootstrapAdmin() && request.auth.uid == uid &&
+         request.resource.data.role == 'admin' &&
+         !exists(/databases/$(database)/documents/users/$(uid)));
+      // Only admin edits profiles (the app offers no self-edit; review 30.9).
+      // The super-admin's own profile can never be demoted or removed (a changed role would leave the bootstrap rule unable to restore it).
+      allow update: if isAdmin() && (!isSuperUid(uid) || (request.resource.data.role == 'admin' && request.resource.data.get('disabled', false) == false));
+      allow delete: if isAdmin() && request.auth.uid != uid && !isSuperUid(uid);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // STATE - the main business document (tx, tasks, whatsappInbox, ...)
+    //
+    // Access model — the three real users:
+    //   admin  (Asher):   full read/write
+    //   manager(Yechiel): READ ONLY. Business advisor — watches everything,
+    //                    changes nothing. Reports and dashboards are all
+    //                    computed from the doc he reads.
+    //   owner  (Yehuda):  READ ONLY. UI shows him only his simple day view;
+    //                    at the data layer he still reads the whole doc
+    //                    since it's his own business.
+    //   All mutations funnel through Asher (admin).
+    //
+    // Future hardening: split /state/current (admin-write) and
+    // /state/owner_view (owner-readable slim doc that only carries the
+    // subset owner should see — no partner totals or VAT).
+    // ══════════════════════════════════════════════════════════
+    // The WhatsApp inbox — split out of state/current on 1.10 (1MB limit).
+    // Exactly the same permissions as state/current.
+    // Change log: every saved money change appends one entry. Append-only — nobody can edit or delete an entry, not even the admin.
+    // Readable by the admin only.
+    match /auditLog/{entryId} {
+      allow read: if isAdmin();
+      // Only people who can change money write entries (the read-only manager never does), always under their own id.
+      // Only the fields the app writes, and the role in the entry must be the writer's real role (no forged history).
+      allow create: if (isAdmin() || isOwner()) && request.resource.data.by == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['kind', 'id', 'op', 'label', 'changes', 'count', 'sample', 'at', 'by', 'byName', 'role', 'cv', 'via']) &&
+        request.resource.data.get('role', '') == role();
+      allow update, delete: if false;
+    }
+
+    match /state/inbox {
+      allow read: if hasRole();
+      allow create, update: if (isAdmin() ||
+        (isOwner() && !userNeedsApproval() && get(/databases/$(database)/documents/state/config).data.get('yehudaDirect', false) == true)) && clientOk();
+      allow delete: if false;   // nothing in the app deletes it (audit 15.10)
+    }
+    match /state/current {
+      allow read: if hasRole();
+      // Asher (admin) has unrestricted write — create, update, delete (create/update
+      // only from an up-to-date app once state/config.minClientVersion is set).
+      allow create, update: if isAdmin() && clientOk();
+      allow delete: if false;   // nothing in the app deletes the business document; a deletion would be a mistake or an attack
+      // Yehuda (owner) writes too — only while Asher's switch "יהודה מכניס
+      // בעצמו" is on (state/config.yehudaDirect, set after Yechiel approves)
+      // — but update only, never create or delete the document, and never
+      // in a single write that empties most of tx/tasks: his client does a
+      // full-document save every time, so a bug, a stale in-memory copy, or
+      // a bad connection on his phone must not be able to wipe the shared
+      // business data the way an ordinary write legitimately can shrink it
+      // by a row or two (an undo). Security review 1.10.
+      allow update: if isOwner() &&
+        !userNeedsApproval() &&
+        get(/databases/$(database)/documents/state/config).data.get('yehudaDirect', false) == true &&
+        clientOk() &&
+        // the linked Google sheet is Asher's setting — a direct writer cannot repoint it
+        request.resource.data.get('googleSheetId', null) == resource.data.get('googleSheetId', null) &&
+        request.resource.data.tx is list && request.resource.data.tasks is list &&
+        request.resource.data.tx.size() + 5 >= resource.data.tx.size() &&
+        request.resource.data.tasks.size() + 5 >= resource.data.tasks.size() &&
+        // Deleting through the tombstone list is also bounded: a few ids at a time, never a flood that makes other devices drop rows.
+        request.resource.data.get('_deletedIds', []).size() <= resource.data.get('_deletedIds', []).size() + 20;
+    }
+
+    // Owner-writable subdoc — reserved for owner-triggered actions Asher
+    // agrees to accept (e.g. a mobile "mark done" without going through Asher).
+    // Owner may write only their own actions bucket; staff can read/merge.
+    match /state/owner_actions {
+      allow read: if isStaff() || isOwner();
+      allow write: if isAdmin() ||
+        (isOwner() &&
+         request.resource.data.keys().hasOnly(['tasks', 'tx', 'deleted', 'updated', 'updatedBy', 'mergedAt', 'mergedBy']) &&
+         request.resource.data.updatedBy == request.auth.uid &&
+         (!('tasks' in request.resource.data) || (request.resource.data.tasks is list && request.resource.data.tasks.size() <= 500)) &&
+         (!('tx' in request.resource.data) || (request.resource.data.tx is list && request.resource.data.tx.size() <= 500)) &&
+         (!('deleted' in request.resource.data) || (request.resource.data.deleted is list && request.resource.data.deleted.size() <= 500)));
+    }
+
+    // Yechiel's notes to Asher (🚩 on a transaction / general note). The
+    // manager may only ADD — the items array can never shrink under his
+    // write — and never touches /state/current. Admin marks notes handled.
+    match /state/manager_notes {
+      allow read: if isStaff();
+      allow create: if isAdmin() || (isManager() && request.resource.data.keys().hasOnly(['items']));
+      // Manager may only APPEND: every existing item stays exactly as it was.
+      allow update: if isAdmin() ||
+        (isManager() && request.resource.data.keys().hasOnly(['items']) && request.resource.data.items.size() >= resource.data.items.size() &&
+         request.resource.data.items.size() <= 500 &&
+         request.resource.data.items[0:resource.data.items.size()] == resource.data.items);
+      allow delete: if isAdmin();
+    }
+
+    // WhatsApp messages handled > 60 days ago, moved out of /state/current
+    // to keep it small. Asher's working material — admin only.
+    match /state/wa_archive {
+      allow read, write: if isAdmin();
+    }
+
+    // Any other state subdocs (config etc.): admin-only writes. Matches are
+    // OR-ed in Firestore, so the docs with their own tighter rules above are
+    // excluded here — otherwise everyone could read wa_archive / manager_notes.
+    match /state/{docId} {
+      allow read: if hasRole() && !(docId in ['wa_archive', 'manager_notes', 'owner_actions']);
+      // current + inbox have their own write rules above (with the clientOk() fence). Matches are OR-ed,
+      // so without this exclusion an admin's old app would bypass the fence through this generic rule.
+      allow write: if isAdmin() && !(docId in ['current', 'inbox']);
+    }
+
+    // Customer orders from /order (30.9). Created ONLY by the server function
+    // (admin SDK). Staff and Yehuda read them; Asher / Yehuda may only mark
+    // one handled (status + who/when + the task it became) — nothing else.
+    match /orders/{id} {
+      allow read: if isStaff() || isOwner();
+      allow update: if (isAdmin() || isOwner()) &&
+        resource.data.status == 'new' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'handledAt', 'handledBy', 'taskId']) &&
+        request.resource.data.status in ['converted', 'dismissed'] &&
+        request.resource.data.handledBy == request.auth.uid;
+      allow create, delete: if false;
+    }
+    match /orderPhotos/{id} {
+      allow read: if isStaff() || isOwner();
+      allow write: if false;
+    }
+    // Push subscriptions: each user registers only their own device, with the
+    // role from their own profile (so nobody can sign up for Yehuda's pushes).
+    match /pushSubs/{id} {
+      allow create, update: if isSignedIn() && request.resource.data.uid == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['uid', 'role', 'sub', 'ua', 'createdAt']) &&
+        request.resource.data.role == role() &&
+        id.matches('^' + request.auth.uid + '_.*') &&
+        request.resource.data.sub.endpoint is string &&
+        request.resource.data.sub.endpoint.matches('^https://.*');
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow read: if false;
+    }
+    // Daily quota counters for /api/order — server only.
+    match /orderQuota/{day} {
+      allow read, write: if false;
+    }
+    // serverSecrets (push keys) — server only; the default deny below covers it.
+
+    // Daily full copies (backups/YYYY-MM-DD, 14 kept) — admin only.
+    match /backups/{day} {
+      allow read, write: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
