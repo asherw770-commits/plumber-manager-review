@@ -8350,10 +8350,11 @@ function renderAdminHome() {
         <span>${prevMonthName} עד ה־${cmp.prevDay}: <bdi dir="ltr">${cmp.prevNet < 0 ? '−' : ''}${fmt(Math.abs(cmp.prevNet))} ₪</bdi>${cmp.pct === null ? '' : ` · <bdi dir="ltr">${cmp.diff >= 0 ? '+' : '−'}${fmt(Math.abs(cmp.diff))} ₪</bdi>`}</span>
       </div>
       <div class="hh-sub" aria-label="השבוע">
-        <span>השבוע (עד היום): נגבה <bdi dir="ltr">${fmt(wk.cur.collected)} ₪</bdi></span>
-        <span class="${wk.diff >= 0 ? 'up' : 'down'}">${wk.diff >= 0 ? '▲' : '▼'} ${wk.pct === null ? fmt(Math.abs(wk.diff)) + ' ₪' : Math.abs(wk.pct) + '%'} מול שבוע שעבר</span>
-        <span>שבוע שעבר עד אותו יום: <bdi dir="ltr">${fmt(wk.prev.collected)} ₪</bdi></span>
-        <span>רווח נקי השבוע: <bdi dir="ltr">${wk.cur.net < 0 ? '−' : ''}${fmt(Math.abs(wk.cur.net))} ₪</bdi></span>
+        <span>השבוע (עד היום): נכנס <bdi dir="ltr">${fmt(wk.cur.gross)} ₪</bdi></span>
+        <span>יצא <bdi dir="ltr">${fmt(wk.cur.partners + wk.cur.expenses + wk.cur.materials)} ₪</bdi></span>
+        <span>סה"כ ביד <bdi dir="ltr">${wk.cur.net < 0 ? '−' : ''}${fmt(Math.abs(wk.cur.net))} ₪</bdi></span>
+        <span class="${wk.netDiff >= 0 ? 'up' : 'down'}">${wk.netDiff >= 0 ? '▲' : '▼'} ${wk.netPct === null ? fmt(Math.abs(wk.netDiff)) + ' ₪' : Math.abs(wk.netPct) + '%'} מול שבוע שעבר</span>
+        <span>שבוע שעבר עד אותו יום: ביד <bdi dir="ltr">${wk.prev.net < 0 ? '−' : ''}${fmt(Math.abs(wk.prev.net))} ₪</bdi></span>
       </div>
       <div class="hh-sub" aria-label="שעות עבודה">
         <span>שעות עבודה השבוע: <bdi dir="ltr">${fmtHM(wk.cur.minutes)}</bdi></span>
