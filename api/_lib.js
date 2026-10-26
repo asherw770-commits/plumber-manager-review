@@ -64,7 +64,7 @@ function normPhone(p) {
 function clean(s, max) { return String(s || '').replace(/[\u0000-\u0008\u000b-\u001f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, max).replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, ''); }   // a cut in the middle of an emoji leaves half of it: drop it
 
 // The key a job's text is filed under in the work-type → category map (state/config.workTypeMap). The app has the same function (workKey in index.html) — a test keeps them equal.
-function workKey(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, 80); }
+function workKey(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, 80).replace(/[\ud800-\udbff]$/, '').trim(); }
 
 // `Authorization: Bearer <secret>` against the cron secret, compared in constant time (hashes first, so even the length does not leak).
 function bearerOk(header, secret) {

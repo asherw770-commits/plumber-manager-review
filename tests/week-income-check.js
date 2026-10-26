@@ -38,7 +38,7 @@ function check(txs, today, label) {
   // 2. the weeks add up to the range they cover, and each equals the same range computed directly
   const n = 14, weeks = app.weeklyFigures(today, n), from = weeks[0].start, to = weeks[n - 1].end;
   expect(weeks.length === n && weeks[n - 1].current && weeks.slice(0, -1).every(w => !w.current), `${label}: week list shape`);
-  expect(weeks.every((w, i) => dow(w.start) === 0 && w.end === app.addDaysISO(w.start, 6) && (i === 0 || w.start === app.addDaysISO(weeks[i - 1].start, 7))) && today >= weeks[n - 1].start && today <= weeks[n - 1].end, `${label}: weeks are consecutive Sunday–Saturday and the last one holds today`);
+  expect(weeks.every((w, i) => dow(w.start) === 0 && w.end === (i === n - 1 ? today : app.addDaysISO(w.start, 6)) && (i === 0 || w.start === app.addDaysISO(weeks[i - 1].start, 7))) && today >= weeks[n - 1].start, `${label}: weeks are consecutive Sunday–Saturday and the last one holds today`);
   const whole = app.cashPeriodFigures(from, to);
   let sum = { collected: 0, partners: 0, gross: 0, expenses: 0, materials: 0, minutes: 0, jobs: 0, noHours: 0, workMine: 0 };
   weeks.forEach(w => {
@@ -93,6 +93,24 @@ for (let i = 0; i < 40; i++) {
       materials: rnd() < 0.3 ? Math.round(rnd() * 500) : 0, hours: rnd() < 0.6 ? Math.round(rnd() * 80) / 10 : 0, whoseCustomer: rnd() < 0.2 ? 'partner' : 'mine', partnerName: rnd() < 0.2 ? 'אהרן' : '', partnerAmount: rnd() < 0.2 ? Math.round(rnd() * 800) : 0 };
   });
   check(txs, app.addDaysISO('2026-08-01', Math.floor(rnd() * 90)), 'rand' + i);
+}
+// the current week stops at today (rows dated later are not in it); the message's partner names add up to its "partners" figure; null percentages sort last
+{
+  const TODAY = '2026-10-26';   // Monday
+  app.state.tx = [
+    { id: 'f1', type: 'income', stage: 'paid', date: '2026-10-29', paidDate: '2026-10-28', total: 100, partnerAmount: 30, whoseCustomer: 'mine', partnerName: 'אהרן' },
+    { id: 'f2', type: 'income', stage: 'paid', date: '2026-10-25', paidDate: '2026-10-25', total: 200, partnerAmount: 100, whoseCustomer: 'mine', partnerName: '' },
+    { id: 'f3', type: 'income', stage: 'paid', date: '2026-10-26', paidDate: '2026-10-26', total: 400, partnerAmount: 100, whoseCustomer: 'mine', partnerName: 'אהרן' }];
+  const wk = app.weeklyFigures(TODAY, 3), cur = wk[wk.length - 1];
+  expect(cur.end === TODAY && cur.collected === 100 + 300 && cur.partners === 200, `current week stops at today: ${JSON.stringify([cur.end, cur.collected, cur.partners])}`);
+  const m = app.buildWeekly(TODAY);
+  expect(m.includes('שותפים: ' + app.fmt(200) + '₪') && m.includes('אהרן ' + app.fmt(100) + '₪') && m.includes('ללא שם ' + app.fmt(100) + '₪'), 'partner names in the message add up to the partners figure:\n' + m);
+  app.state.config = {}; app.state.tx = [
+    { id: 'g1', type: 'income', stage: 'paid', date: '2026-10-20', paidDate: '2026-10-20', total: 100, materials: 10, work: 'א' }, { id: 'g2', type: 'income', stage: 'paid', date: '2026-10-20', paidDate: '2026-10-20', total: 0, work: 'ב' },
+    { id: 'g3', type: 'income', stage: 'paid', date: '2026-10-20', paidDate: '2026-10-20', total: 100, materials: 50, work: 'ג' }];
+  app.state.config = { workTypeMap: { 'א': 'ק1', 'ב': 'ק2', 'ג': 'ק3' } };
+  const order = app.workProfitReport(app.state.tx).cats.map(c => c.cat + ':' + c.pct);
+  expect(order.join() === 'ק1:90,ק3:50,ק2:null', 'categories with no percentage come last: ' + order);
 }
 if (fails) { console.error(`\n${fails} failure(s)`); process.exit(1); }
 console.log('✅ week-income-check: הכנסה ושעות לפי שבוע (ראשון–שבת) — טווח של חודש שלם זהה לדוח החודשי, השבועות מסתכמים לטווח, שעות מחושבות מחדש בנפרד, בלי סטייה בשעון חורף (נתונים אמיתיים + 40 ספרים אקראיים)');

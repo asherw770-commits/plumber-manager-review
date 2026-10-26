@@ -10,7 +10,7 @@ const CHECKS = [
   ['task-money-check.js'], ['partner-paid-check.js'], ['collection-rule-check.js'], ['partners-accuracy-check.js'], ['order-check.js'], ['messages-check.js'], ['home-check.js'],
   ['ui2-version-check.js'], ['save-wedge-check.js'], ['entry-order-check.js'], ['access-check.js'], ['push-access-check.js'], ['partner-guess-check.js'], ['order-hardening-check.js'],
   ['safe-id-check.js'], ['erp-hours-check.js'], ['work-category-check.js'], ['week-income-check.js'], ['fresh-check.js'], ['owner-queue-check.js'], ['rules-shape-check.js'],
-  ['inject-check.js'], ['cron-auth-check.js'], ['perf-equiv-check.js'], ['backup-restore-check.js'], ['money-fixes-check.js'], ['sync-adversarial-check.js']
+  ['inject-check.js'], ['cron-auth-check.js'], ['audit-26-10-check.js'], ['live-warnings-check.js'], ['mutation-gaps-check.js'], ['perf-equiv-check.js'], ['backup-restore-check.js'], ['money-fixes-check.js'], ['sync-adversarial-check.js']
 ];
 const filter = process.argv[2] || '';
 const failed = [];

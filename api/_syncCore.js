@@ -43,7 +43,7 @@ async function runSheetSync(db) {
   // would become a formula in Asher's spreadsheet.
   app.state.tx = app.safeRows(d.tx);
   app.state.tasks = app.safeRows(d.tasks);
-  app.state.customerMeta = d.customerMeta || {};
+  app.state.customerMeta = app.cleanCustomerMeta(d.customerMeta);
   app.state.priceList = app.safeRows(d.priceList);
   app.state.settlements = app.safeRows(d.settlements);
 

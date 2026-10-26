@@ -47,7 +47,7 @@ async function handle(req, res, db) {
   const videos = (Array.isArray(b.videos) ? b.videos : []).slice(0, MAX_VIDEOS)
     .filter(p => typeof p === 'string' && p.length <= MAX_VIDEO_CHARS && /^data:video\/(mp4|webm);base64,[A-Za-z0-9+/=]+$/.test(p));
   const day = dayIL();
-  const ip = String(req.headers['x-forwarded-for'] || req.socket && req.socket.remoteAddress || '').split(',')[0].trim();
+  const ip = String(req.headers['x-vercel-forwarded-for'] || req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.socket && req.socket.remoteAddress || '').split(',')[0].trim();   // Vercel's own header first: x-forwarded-for may carry what the caller sent
   // IPv6: one household / phone owns a whole /64, so count that prefix, not the single address.
   let ipKey = ip.replace(/[^0-9a-f.:]/gi, '').slice(0, 45) || 'unknown';
   if (ipKey.includes(':')) ipKey = expandV6(ipKey).slice(0, 4).join(':');

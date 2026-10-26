@@ -14,7 +14,7 @@ const { getDb, dayIL, clean, workKey } = require('./_lib');
 const MAX_ITEMS = 200, MAX_CATS = 40, CAT_LEN = 30, DAILY_WRITES = 3000, DAILY_BAD = 300;
 const BAD_KEY = k => !k || /^__.*__$/.test(k);
 
-const catOf = v => clean(v, CAT_LEN);
+const catOf = v => clean(v, CAT_LEN).trim();
 // Everything the page may offer: the price list's groups, categories added so far, and the ones already used in the map.
 function allCats(state, cfg) {
   const set = new Set();

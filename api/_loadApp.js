@@ -6,7 +6,7 @@
 // Pure extraction/sandbox plumbing — no money logic lives in this file.
 const vm = require('vm');
 
-const CONSTS = /^(const|let) (TX_STAGES|TX_LEGACY_MIRROR|LEGACY_SEED_IDS|VAT_RATE|VAT_MULT|WORK_STOP|NO_CATEGORY|_aliasCache|_reconCache|_clockOffset|_localEdits|TOMBSTONE_CAP|STALE_ROW_GRACE_MS|_STAGE_RANK|_TX_GROUPS|_TASK_GROUPS|WA_TPL_LABELS|COLLECTION_RULE_TEXT|EXPENSE_CATEGORIES|OWNER_EXPENSE_CATEGORIES|FIXED_EXPENSE_CATEGORIES|EXPENSE_CAT_ALIAS|_plStems|_plStemsSig)\b/;
+const CONSTS = /^(const|let) (TX_STAGES|TX_LEGACY_MIRROR|LEGACY_SEED_IDS|VAT_RATE|VAT_MULT|WORK_STOP|NO_CATEGORY|_aliasCache|_reconCache|_clockOffset|_localEdits|TOMBSTONE_CAP|STALE_ROW_GRACE_MS|_STAGE_RANK|_TX_GROUPS|_TASK_GROUPS|WA_TPL_LABELS|COLLECTION_RULE_TEXT|EXPENSE_CATEGORIES|OWNER_EXPENSE_CATEGORIES|FIXED_EXPENSE_CATEGORIES|EXPENSE_CAT_ALIAS|_plStems|_plStemsSig|_liveWarned)\b/;
 
 function loadApp(html) {
   const scripts = [...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);

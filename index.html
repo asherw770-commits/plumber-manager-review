@@ -4209,7 +4209,7 @@ function sanitizeRowFields(r) {
   const ISO = /^\d{4}-\d{2}-\d{2}$/, ENUM = /^[a-z_]{1,24}$/;
   ['date', 'paidDate', 'promiseDate', 'deadline'].forEach(k => { if (k in r && !(typeof r[k] === 'string' && (r[k] === '' || ISO.test(r[k])))) r[k] = ''; });
   if ('deadlineTime' in r && !(typeof r.deadlineTime === 'string' && (r.deadlineTime === '' || /^\d{2}:\d{2}$/.test(r.deadlineTime)))) r.deadlineTime = '';
-  ['total', 'partnerAmount', 'materials', 'hours', 'paidAmount', 'settledPartnerAmount', 'cost', 'myShare'].forEach(k => {
+  ['total', 'partnerAmount', 'materials', 'hours', 'paidAmount', 'settledPartnerAmount', 'cost', 'myShare', 'costPrice', 'sellPrice', 'bundleSellPrice', 'price', 'priceMax', 'qty'].forEach(k => {   // catalog / price-list numbers too: they are written into value="…" attributes (audit 26.10)
     if (!(k in r)) return;
     const v = r[k];
     if (typeof v === 'number') { if (!isFinite(v)) r[k] = 0; }
@@ -4218,7 +4218,9 @@ function sanitizeRowFields(r) {
   });
   if ('type' in r && r.type !== 'income' && r.type !== 'expense') r.type = 'income';
   ['stage', 'status', 'lifecycleStatus', 'whoseCustomer', 'ownership', 'kind', 'invoiceStatus'].forEach(k => { if (k in r && r[k] !== '' && r[k] != null && !(typeof r[k] === 'string' && ENUM.test(r[k]))) delete r[k]; });
-  ['work', 'address', 'phone', 'customer', 'notes', 'partnerName', 'payment', 'category', 'task', 'invoiceNo', 'invoiceIssuer', 'executedBy', 'cancelReason', 'workCategory'].forEach(k => { if (k in r && r[k] !== null && typeof r[k] === 'object') r[k] = ''; });
+  ['work', 'address', 'phone', 'customer', 'notes', 'partnerName', 'payment', 'category', 'task', 'invoiceNo', 'invoiceIssuer', 'executedBy', 'cancelReason', 'workCategory', 'name', 'note', 'sku', 'supplier'].forEach(k => { if (k in r && r[k] !== null && typeof r[k] === 'object') r[k] = ''; });
+  // A customer / partner called __x__ would be a reserved Firestore field name once it becomes a customerMeta key (the whole save would fail), and __proto__ breaks the name maps.
+  ['customer', 'partnerName'].forEach(k => { if (typeof r[k] === 'string' && /^\s*__.*__\s*$/.test(r[k])) r[k] = r[k].replace(/_/g, ' ').trim(); });
   return r;
 }
 // A text cell that a spreadsheet would run as a formula (= + - @ or a control character first) gets a leading apostrophe; plain numbers are left alone.
@@ -4227,6 +4229,23 @@ function csvSafeText(v) {
   if (typeof v === 'number') return v;
   const s = String(v);
   return /^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s) ? "'" + s : s;
+}
+// customerMeta is keyed by customer name and its entries came from the cloud / a backup / the owner's phone: keep only plain values (strings in lists, no
+// objects — one with an `f` key becomes a spreadsheet formula), and drop keys Firestore reserves (__x__) or JavaScript treats specially (__proto__) (audit 26.10).
+function cleanCustomerMeta(m) {
+  const out = {};
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return out;
+  const strs = a => (Array.isArray(a) ? a : []).filter(x => typeof x === 'string').slice(0, 50).map(x => x.slice(0, 120));
+  Object.keys(m).forEach(name => {
+    if (/^__.*__$/.test(name) || !name || name.length > 120) return;
+    const e = m[name]; if (!e || typeof e !== 'object' || Array.isArray(e)) return;
+    const o = {};
+    Object.keys(e).forEach(k => { if (/^__.*__$/.test(k)) return; const v = e[k]; if (Array.isArray(v)) o[k] = strs(v); else if (typeof v === 'string') o[k] = v.slice(0, 2000); else if (typeof v === 'number' || typeof v === 'boolean') o[k] = v; });
+    ['tags', 'phones', 'notDup'].forEach(k => { if (!Array.isArray(o[k])) o[k] = k === 'notDup' ? undefined : []; if (o[k] === undefined) delete o[k]; });
+    if (typeof o.notes !== 'string') o.notes = '';
+    out[name] = o;
+  });
+  return out;
 }
 function safeRows(arr) { return (Array.isArray(arr) ? arr : []).filter(r => r && typeof r === 'object' && /^[\w-]{1,64}$/.test(String(r.id == null ? '' : r.id))).map(sanitizeRowFields); }
 function uid() { return 'x' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
@@ -4689,7 +4708,7 @@ let _aliasCache = null, _aliasAt = 0, _aliasSig = '';
 function customerAliases() {
   const sig = `${state.tx.length}|${state.tasks.length}|${Object.keys(state.customerMeta || {}).length}|${state._lastSaved || 0}`;
   if (_aliasCache && sig === _aliasSig && Date.now() - _aliasAt < 1500) return _aliasCache;
-  const parent = {}, count = {}, byPhone = {};
+  const parent = Object.create(null), count = Object.create(null), byPhone = Object.create(null);   // keyed by customer name: a plain {} breaks on names like constructor / toString (audit 26.10)
   const find = x => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
   // Pairs Asher marked "לא כפול" never merge, whatever phone they share.
   const meta = state.customerMeta || {};
@@ -4707,9 +4726,9 @@ function customerAliases() {
   state.tx.forEach(t => { if (t.type === 'income') link(t.customer, t.whoseCustomer === 'partner' ? '' : t.phone); });
   state.tasks.forEach(t => link(t.customer, t.whoseCustomer === 'partner' ? '' : t.phone));
   Object.entries(state.customerMeta || {}).forEach(([n, m]) => { const ps = (m && m.phones) || []; if (!ps.length) link(n, ''); ps.forEach(ph => link(n, ph)); });
-  const groups = {};
+  const groups = Object.create(null);
   Object.keys(parent).forEach(n => { const r = find(n); (groups[r] = groups[r] || []).push(n); });
-  const canon = {};
+  const canon = Object.create(null);
   Object.values(groups).forEach(names => {
     const best = [...names].sort((a, b) => (count[b] || 0) - (count[a] || 0) || a.localeCompare(b, 'he'))[0];
     names.forEach(n => { canon[n] = best; });
@@ -5673,7 +5692,7 @@ function _restoreLocal() {
     const parsed = JSON.parse(local);
     if (parsed.tx) state.tx = safeRows(parsed.tx);
     if (parsed.tasks) state.tasks = safeRows(parsed.tasks);
-    if (parsed.customerMeta) state.customerMeta = parsed.customerMeta;
+    if (parsed.customerMeta) state.customerMeta = cleanCustomerMeta(parsed.customerMeta);
     if (parsed.whatsappInbox) state.whatsappInbox = safeRows(parsed.whatsappInbox);
     if (parsed.dailyNotes) state.dailyNotes = parsed.dailyNotes;
     if (parsed.products) state.products = safeRows(parsed.products);
@@ -5770,7 +5789,7 @@ function mergeCloudDoc(d, inboxRows) {
   // customerMeta and dailyNotes are dicts (keyed by name / by date), merged
   // per key by timestamp (see mergeDictByStamp).
   if (d.customerMeta && typeof d.customerMeta === 'object') {
-    state.customerMeta = mergeDictByStamp('customerMeta', state.customerMeta, d.customerMeta, d._dictUpdatedAt, d._dictDeleted);
+    state.customerMeta = mergeDictByStamp('customerMeta', state.customerMeta, cleanCustomerMeta(d.customerMeta), d._dictUpdatedAt, d._dictDeleted);
   }
   if (d.dailyNotes && typeof d.dailyNotes === 'object') {
     state.dailyNotes = mergeDictByStamp('dailyNotes', state.dailyNotes, d.dailyNotes, d._dictUpdatedAt, d._dictDeleted);
@@ -5880,6 +5899,7 @@ function recentRegressions(hours) {
 }
 function _stampAllChangedRows() {
   const base = state._baseline || {};
+  const _t0 = _clockNow();
   try { _logStatusRegressions(base.tx, state.tx); } catch (_) {}
   _stampChangedRows(base.tx, state.tx);
   _stampChangedRows(base.tasks, state.tasks);
@@ -5889,6 +5909,7 @@ function _stampAllChangedRows() {
   _stampChangedRows(base.settlements, state.settlements);
   _stampChangedDict('customerMeta', base.customerMeta, state.customerMeta);
   _stampChangedDict('dailyNotes', base.dailyNotes, state.dailyNotes);
+  try { liveCheckRows(state.tx.filter(t => (_localEdits.get(t.id) || 0) >= _t0).map(t => t.id)); } catch (_) {}   // warn right away about what was just typed
 }
 
 // Edits are stamped with the SERVER's time: a device whose clock runs ahead
@@ -7552,7 +7573,7 @@ function workCategory(work) {
 // has a category only when someone marked its kind of work. The marks live in state/config.workTypeMap
 // ({work text → category}); marking one text puts every job with the same text in that category. Yehuda marks
 // them from a private link (api/classify.js); Asher can mark here too. A manual t.workCategory on one job still wins.
-function workKey(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, 80); }   // same as workKey in api/_lib.js (a test keeps them equal)
+function workKey(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, 80).replace(/[\ud800-\udbff]$/, '').trim(); }   // same as workKey in api/_lib.js (a test keeps them equal)
 function workTypeMap() { const m = state.config && state.config.workTypeMap; return m && typeof m === 'object' ? m : {}; }
 function workTypeCategory(work) {
   const k = workKey(work);
@@ -7781,8 +7802,8 @@ function workProfitReport(txs) {
     add(k, mine, mat);
   });
   const fin = o => ({ ...o, net: o.mine - o.materials, pct: marginPct(o.mine - o.materials, o.mine) });
-  const rows = [...cats.values()].map(c => ({ ...fin(c), kinds: [...c.kinds.values()].map(fin).sort((a, b) => (b.pct == null) - (a.pct == null) || b.net - a.net) }))
-    .sort((a, b) => ((a.cat === NO_CATEGORY) - (b.cat === NO_CATEGORY)) || (b.pct == null) - (a.pct == null) || b.pct - a.pct);
+  const rows = [...cats.values()].map(c => ({ ...fin(c), kinds: [...c.kinds.values()].map(fin).sort((a, b) => (a.pct == null) - (b.pct == null) || b.pct - a.pct || b.net - a.net) }))
+    .sort((a, b) => ((a.cat === NO_CATEGORY) - (b.cat === NO_CATEGORY)) || (a.pct == null) - (b.pct == null) || b.pct - a.pct);
   return { cats: rows, all: fin(all), classified: fin(classified) };
 }
 function workProfitPanelHTML(txs) {
@@ -7851,7 +7872,7 @@ function periodsTabHTML(mode) {
       <div class="panel" style="margin-bottom:16px;"><div class="panel-header"><div class="panel-title">🔎 בדיקות — האם החלוקה לחודשים נכונה</div></div><div class="panel-body no-pad" style="padding:6px 0;">
         ${ok(Math.abs(catSum - tabSum) < 0.01, `סכום ההוצאות לפי קטגוריות (${money(catSum)}) = סכום ההוצאות בטבלת החודשים (${money(tabSum)})`)}
         ${ok(!bad.length, bad.length ? `סה"כ ביד שונה מהסיכום החודשי ב: ${bad.map(x => mrMonthName(x.r.key)).join(', ')}` : 'סה"כ ביד בכל חודש זהה לסיכום החודשי של האפליקציה')}
-        ${`<div style="padding:6px 14px;font-size:13px;color:var(--text-secondary);">ℹ️ כל ההוצאות במערכת: ${ck.total} בסך ${money(ck.sum)} · ב-12 החודשים האחרונים: ${money(tabSum)}${ck.sum - tabSum > 0.01 ? ` · לפני כן או בלי תאריך: ${money(ck.sum - tabSum)}` : ''}</div>`}
+        ${`<div style="padding:6px 14px;font-size:13px;color:var(--text-secondary);">ℹ️ כל ההוצאות במערכת: ${ck.total} בסך ${money(ck.sum)} · ב-12 החודשים האחרונים: ${money(tabSum)}${ck.sum - tabSum > 0.01 ? ` · מחוץ ל-12 החודשים (קודם, עתידי או בלי תאריך): ${money(ck.sum - tabSum)}` : ''}</div>`}
         ${list(ck.noDate, 'בלי תאריך תקין — לא נספרות באף חודש')}${list(ck.future, 'בתאריך עתידי')}${list(ck.noCategory, 'בלי קטגוריה')}${list(ck.badAmount, 'עם סכום 0 או שלילי')}${list(ck.dups, 'שנראות כפולות (אותו תאריך, סכום, קטגוריה ותיאור)')}
         ${!(ck.noDate.length + ck.future.length + ck.noCategory.length + ck.badAmount.length + ck.dups.length) ? ok(true, 'כל ההוצאות עם תאריך, קטגוריה וסכום תקינים, ואין כפולות') : ''}
       </div></div>`;
@@ -8443,7 +8464,8 @@ function cashPeriodFigures(from, to) { return _bucketFigures([{ start: from, end
 function weeklyFigures(todayIso, n) {
   const first = addDaysISO(weekStartISO(todayIso), -7 * (n - 1)), firstNum = _isoDayNum(first);
   const weeks = Array.from({ length: n }, (_, i) => ({ start: addDaysISO(first, 7 * i), end: addDaysISO(first, 7 * i + 6), current: i === n - 1 }));
-  return _bucketFigures(weeks, iso => { if (!iso) return -1; const i = Math.floor((_isoDayNum(iso) - firstNum) / 7); return i >= 0 && i < n ? i : -1; });
+  weeks[n - 1].end = todayIso;   // the current week runs to today (the home line says "עד היום"): rows dated later are not counted yet and are flagged by the live warnings
+  return _bucketFigures(weeks, iso => { if (!iso || iso > todayIso) return -1; const i = Math.floor((_isoDayNum(iso) - firstNum) / 7); return i >= 0 && i < n ? i : -1; });
 }
 // The last `n` calendar months ending with the month of todayIso, oldest first.
 function monthlyFigures(todayIso, n) {
@@ -11187,6 +11209,72 @@ function detectDataIssues() {
   });
   return issues;
 }
+// ═══ Live warnings while working (Asher 26.10: "התראות על דברים לא תקינים תוך כדי השימוש") ═══
+// Every row the user just changed is checked on the spot; if something looks wrong a bar appears with a button to fix it. Nothing is blocked or changed —
+// the data is saved as typed and the bar only points at the doubt. The same row is not warned twice for the same reason (until the reason goes away).
+function liveIssuesOf(t, today, others) {
+  const out = [], total = Number(t.total) || 0, pa = Number(t.partnerAmount) || 0, tdy = today || todayISO();
+  const plus = n => { const d = new Date(tdy + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const add = (code, why) => out.push({ code, why });
+  if (t.type === 'expense') {
+    if (!(total > 0)) add('exp-amount', 'הוצאה בלי סכום');
+    else if (total > 20000) add('exp-big', `הוצאה גדולה מהרגיל (${fmt(total)}₪) — לוודא`);
+    if (!String(t.category || '').trim()) add('exp-cat', 'הוצאה בלי קטגוריה');
+    if (!t.date) add('exp-date', 'הוצאה בלי תאריך — לא תיספר באף חודש');
+    else if (t.date > plus(1)) add('exp-future', 'תאריך הוצאה עתידי');
+    return out;
+  }
+  if (t.type !== 'income') return out;
+  const st = txStage(t), pipeline = st === 'quote' || st === 'scheduled' || st === 'cancelled', done = !pipeline;
+  if (done && !(total > 0)) add('amount0', 'עבודה שבוצעה בלי סכום');
+  if (total > 30000) add('big', `סכום גבוה מהרגיל (${fmt(total)}₪) — לוודא`);
+  if (total > 0 && pa > total + 0.01) add('partner>total', `לשותף (${fmt(pa)}₪) יותר מסה"כ העבודה (${fmt(total)}₪)`);
+  if (st === 'partial' && Number(t.paidAmount) > total + 0.01) add('paid>total', 'שולם חלקית יותר מסה"כ העבודה');
+  if (st === 'partial' && !(Number(t.paidAmount) > 0)) add('partial0', 'סומן "שולם חלקית" בלי סכום ששולם');
+  if (t.paidDate && t.date && t.paidDate < t.date) add('paid<date', 'תאריך התשלום לפני תאריך העבודה');
+  if (done && t.date && t.date > plus(1)) add('future', 'עבודה שבוצעה בתאריך עתידי');
+  if (!t.date) add('nodate', 'חסר תאריך עבודה — לא תיספר באף חודש');
+  if (t.date && t.date < plus(-400)) add('old', 'תאריך עבודה ישן מאוד (יותר משנה) — לוודא');
+  if (Number(t.hours) > 14 || Number(t.hours) < 0) add('hours', `זמן עבודה חריג (${Number(t.hours)} שעות)`);
+  if (total > 0 && (Number(t.materials) || 0) > total + 0.01) add('mat>total', `חומרים (${fmt(Number(t.materials))}₪) גדולים מסכום העבודה`);
+  if ((t.partnerName || '').trim() && !(pa > 0) && t.whoseCustomer !== 'partner' && total > 0) add('partner0', `שותף (${t.partnerName.trim()}) בלי סכום לשותף`);
+  if (t.whoseCustomer === 'partner' && !(t.partnerName || '').trim()) add('partner-name', 'לקוח של שותף בלי שם שותף');
+  const ph = String(t.phone || '').replace(/\D/g, '');
+  if (ph && !/^(0\d{8,9}|972\d{8,9})$/.test(ph)) add('phone', 'מספר הטלפון לא נראה תקין');
+  if (!String(t.customer || '').trim() && !ph && t.whoseCustomer !== 'partner' && done) add('noid', 'עבודה בלי שם לקוח ובלי טלפון');
+  if (others && String(t.customer || '').trim() && total > 0 && t.date) {
+    const key = r => [String(r.customer || '').trim(), r.date, Number(r.total) || 0, String(r.work || '').trim()].join('|');
+    const k = key(t); if (others.some(r => r !== t && r.id !== t.id && r.type === 'income' && key(r) === k)) add('dup', 'נראית כפולה: אותו לקוח, תאריך, סכום ועבודה כבר קיימים');
+  }
+  return out;
+}
+const _liveWarned = new Set();
+let _liveBarTimer = null;
+function liveCheckRows(ids) {
+  if (!ids || !ids.length || (typeof isPreviewMode === 'function' && isPreviewMode())) return;
+  const today = todayISO(), found = [];
+  const byId = new Map(state.tx.map(t => [t.id, t]));
+  ids.forEach(id => {
+    const t = byId.get(id); if (!t) return;
+    const now = liveIssuesOf(t, today, state.tx), nowCodes = new Set(now.map(x => x.code));
+    [..._liveWarned].filter(k => k.startsWith(id + ':') && !nowCodes.has(k.slice(id.length + 1))).forEach(k => _liveWarned.delete(k));   // the doubt is gone → may warn again if it returns
+    now.forEach(x => { const k = id + ':' + x.code; if (!_liveWarned.has(k)) { _liveWarned.add(k); found.push({ t, why: x.why }); } });
+  });
+  if (found.length) showLiveWarn(found);
+}
+function showLiveWarn(found) {
+  let bar = document.getElementById('liveWarnBar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'liveWarnBar'; bar.setAttribute('role', 'alert'); document.body.appendChild(bar); }
+  bar.style.cssText = 'position:fixed;inset-inline:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:9000;background:#fff7e0;color:#5c3b00;border:1px solid #e3b341;border-radius:14px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;gap:10px;align-items:flex-start;max-width:560px;margin:0 auto;font-size:14px;line-height:1.5;';
+  const f = found[0], who = escapeHtml(String(f.t.customer || f.t.work || (f.t.type === 'expense' ? 'הוצאה' : 'עבודה')).slice(0, 40));
+  bar.innerHTML = `<div style="flex:1;min-width:0;">⚠️ <b>${who}</b>: ${escapeHtml(f.why)}${found.length > 1 ? ` <span style="opacity:.8;">· ועוד ${found.length - 1} התראות</span>` : ''}</div>
+    <button type="button" class="btn btn-sm" data-edit-tx="${escapeAttr(f.t.id)}" style="min-height:44px;">✏️ תקן</button>
+    <button type="button" aria-label="סגור" data-live-warn-close style="min-height:44px;min-width:44px;border:0;background:transparent;font-size:18px;color:inherit;">✕</button>`;
+  clearTimeout(_liveBarTimer); _liveBarTimer = setTimeout(() => { const b = document.getElementById('liveWarnBar'); if (b) b.remove(); }, 20000);
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-live-warn-close]') || e.target.closest('#liveWarnBar [data-edit-tx]')) { const b = document.getElementById('liveWarnBar'); if (b) b.remove(); clearTimeout(_liveBarTimer); }
+});
 // ═══ Reconciliation check (Asher 29.9 — "דיוק מלא") ═══
 // Every headline figure is computed once more straight from the rows and
 // compared with what each screen actually uses. A gap means a row falls
@@ -12654,8 +12742,9 @@ function buildWeekly(todayIso) {
   const inRange = iso => iso && iso >= c.start && iso <= c.to;
   const partners = {}, cats = {};
   state.tx.forEach(t => {
-    if (t.type === 'income' && t.whoseCustomer !== 'partner' && t.partnerName && (isPaidTx(t) || (txStage(t) === 'partial' && (Number(t.paidAmount) || 0) > 0)) && inRange(cashDateOf(t))) {
-      const v = collectedPartnerShare(t); if (v > 0) partners[t.partnerName.trim()] = (partners[t.partnerName.trim()] || 0) + v;
+    if (t.type === 'income' && t.whoseCustomer !== 'partner' && (isPaidTx(t) || (txStage(t) === 'partial' && (Number(t.paidAmount) || 0) > 0)) && inRange(cashDateOf(t))) {
+      const v = collectedPartnerShare(t), nm = String(t.partnerName || '').trim() || 'ללא שם';   // same rows as "שותפים" above, so the names add up to it
+      if (v > 0) partners[nm] = (partners[nm] || 0) + v;
     }
     if (t.type === 'expense' && inRange(cashDateOf(t))) { const k = expenseCategoryKey(String(t.category || '').trim()) || 'ללא קטגוריה'; cats[k] = (cats[k] || 0) + (Number(t.total) || 0); }
   });
@@ -13007,11 +13096,11 @@ function openEditProduct(id) {
       </div>
       <div class="field">
         <label>מחיר עלות (₪) <span style="color:var(--danger);">*</span></label>
-        <input type="number" name="costPrice" id="prodCost" step="any" min="0" value="${p.costPrice || ''}" placeholder="מה שיהודה משלם">
+        <input type="number" name="costPrice" id="prodCost" step="any" min="0" value="${escapeAttr(p.costPrice || '')}" placeholder="מה שיהודה משלם">
       </div>
       <div class="field">
         <label>מחיר מכירה ללקוח (₪) <span style="color:var(--danger);">*</span></label>
-        <input type="number" name="sellPrice" id="prodSell" step="any" min="0" value="${p.sellPrice || ''}" placeholder="מחירון">
+        <input type="number" name="sellPrice" id="prodSell" step="any" min="0" value="${escapeAttr(p.sellPrice || '')}" placeholder="מחירון">
       </div>
       <div class="field">
         <label>ספק</label>
@@ -13095,7 +13184,7 @@ function openEditBundle(id) {
       </div>
       <div class="field span-full">
         <label>מחיר החבילה ללקוח (₪) <span style="color:var(--danger);">*</span></label>
-        <input type="number" name="bundleSellPrice" id="bundleSellPrice" step="any" min="0" value="${b.bundleSellPrice || ''}" placeholder="הסכום שגובים על החבילה">
+        <input type="number" name="bundleSellPrice" id="bundleSellPrice" step="any" min="0" value="${escapeAttr(b.bundleSellPrice || '')}" placeholder="הסכום שגובים על החבילה">
         <div class="field-hint">העלות מחושבת אוטומטית לפי מחיר העלות של הפריטים.</div>
       </div>
       <div class="field span-full">
@@ -13126,7 +13215,7 @@ function openEditBundle(id) {
           <option value="">-- בחר מוצר --</option>
           ${singles.map(s => `<option value="${escapeAttr(s.id)}" ${s.id === r.productId ? 'selected' : ''}>${escapeHtml(s.name)} · עלות ${fmt(s.costPrice)}₪ / מכ ${fmt(s.sellPrice)}₪</option>`).join('')}
         </select>
-        <input type="number" data-role="qty" step="1" min="1" value="${r.qty}" placeholder="כמות">
+        <input type="number" data-role="qty" step="1" min="1" value="${escapeAttr(r.qty)}" placeholder="כמות">
         <button type="button" data-role="del" title="הסר" aria-label="הסר">✕</button>
       </div>
     `).join('');
@@ -13488,11 +13577,12 @@ function waTplPaid(v) {
   return { paid: null, method: '', amount: null };
 }
 function parseWaTemplate(text) {
-  const raw = String(text || '');
+  // A single huge line must not freeze the screen (audit 26.10): every line is cut to 2,000 characters before any pattern runs on it.
+  const raw = String(text || '').split('\n').map(l => (l.length > 2000 ? l.slice(0, 2000) : l)).join('\n');
   // Normalisation first (scan 5.10): bidi marks / zero-width chars, NBSP, WhatsApp markup (*bold*), bullets and emoji in front of
   // a label used to hide the label ("👤 שם לקוח: דוד" became the customer itself, "‏סכום: 350" disappeared).
   const lines = raw.replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '').replace(/\u00A0/g, ' ').replace(/[\u2028\u2029]/g, '\n').split('\n')
-    .map(l => l.replace(/^[\s*_~>•·\-–—]+/, '').replace(/^(?:[\u{1F300}-\u{1FAFF}\u2600-\u27BF\uFE0F]\s*)+/u, '').replace(/([^\s:：]+)\*\s*[:：]/, '$1:').replace(/\*/g, '').trim()).filter(Boolean).map(l => {
+    .map(l => l.replace(/^[\s*_~>•·\-–—]+/, '').replace(/^(?:[\u{1F300}-\u{1FAFF}\u2600-\u27BF\uFE0F]\s*)+/u, '').replace(/([^\s:：*]+)\*\s*[:：]/, '$1:').replace(/\*/g, '').trim()).filter(Boolean).map(l => {
     // "לא שולם :" is sometimes written as one fused label instead of the
     // template's "שולם :" + "לא" as the value — fold it into that shape so
     // waTplPaid still sees the "לא" instead of the negative getting dropped.
@@ -14474,7 +14564,7 @@ function openInterpretModal(waId) {
       <div class="field"><label>קטגוריה (הוצאה)</label>
         <select name="category">
           <option value="">--</option>
-          ${EXPENSE_CATEGORIES.map(c => `<option value="${c}" ${f.category===c?'selected':''}>${c}</option>`).join('')}
+          ${EXPENSE_CATEGORIES.map(c => `<option value="${escapeAttr(c)}" ${f.category===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
         </select>
       </div>
       <div class="field span-2"><label>הערות</label><textarea name="notes" rows="2">${escapeHtml(m.text)}</textarea></div>
@@ -14796,7 +14886,7 @@ function openEditTx(id) {
       <div class="field"><label>האם שילם?</label><select name="status" id="editTxStatus"><option value="unpaid" ${txStage(t)==='unpaid'?'selected':''}>לא שולם</option><option value="paid" ${txStage(t)==='paid'?'selected':''}>שולם</option><option value="partial" ${txStage(t)==='partial'?'selected':''}>חלקי</option></select></div>
       <div class="field" id="editTxPaidDateWrap" style="${(txStage(t)==='paid'||txStage(t)==='partial')?'':'display:none;'}"><label>📅 תאריך התשלום בפועל</label><input type="date" name="paidDate" id="editTxPaidDate" value="${escapeAttr(t.paidDate||'')}"><div class="field-hint" style="color:var(--warning);font-weight:600;">חובה — לא לפי תאריך העסקה. משפיע על דוחות המזומן.</div></div>
       <div class="field" id="editTxPaidAmountWrap" style="${txStage(t)==='partial'?'':'display:none;'}"><label>${paidFieldIsMyShare(t) ? '💰 קיבלתי מ' + escapeHtml(t.partnerName || 'השותף') + ' עד כה (החלק שלי) ₪' : '💰 סכום ששולם עד כה (₪)'}</label><input type="number" name="paidAmount" step="any" min="0" data-paid-mode="${paidFieldIsMyShare(t) ? 'myshare' : 'total'}" value="${paidAmountToField(t) || ''}"><div class="field-hint">${paidFieldIsMyShare(t) ? 'מתוך ' + fmt(yehudaShare(t)) + '₪ שהוא צריך להביא לי (הלקוח שלו) · מה שקיבלתי בפועל' : 'חלקי מהסכום הכולל · מה שהתקבל בפועל'}</div></div>
-      <div class="field"><label>קטגוריה</label><select name="category"><option value="">-- ללא --</option>${[...new Set([...(t.type === 'expense' ? EXPENSE_CATEGORIES : ['אינסטלציה','ביוב','דוד שמש','שיפוץ','אחר']), ...(t.category ? [t.category] : [])])].map(c=>`<option value="${c}" ${t.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="field"><label>קטגוריה</label><select name="category"><option value="">-- ללא --</option>${[...new Set([...(t.type === 'expense' ? EXPENSE_CATEGORIES : ['אינסטלציה','ביוב','דוד שמש','שיפוץ','אחר']), ...(t.category ? [t.category] : [])])].map(c=>`<option value="${escapeAttr(c)}" ${t.category===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select></div>
       <div class="field span-full" style="background:var(--surface);padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
         <label>🧾 חשבונית</label>
         <select name="invoiceStatus" id="editTxInvoiceStatus">
@@ -14995,7 +15085,7 @@ function openEditTask(id) {
         <datalist id="editTaskExecutedByOpts"><option value="שלומי"><option value="אהרן"></datalist>
         <div class="field-hint">ברירת מחדל: יהודה בעצמו</div>
       </div>
-      <div class="field"><label>קטגוריה</label><select name="category"><option value="">-- ללא --</option>${['אינסטלציה','ביוב','דוד שמש','שיפוץ','אחר'].map(c=>`<option value="${c}" ${t.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="field"><label>קטגוריה</label><select name="category"><option value="">-- ללא --</option>${['אינסטלציה','ביוב','דוד שמש','שיפוץ','אחר'].map(c=>`<option value="${escapeAttr(c)}" ${t.category===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select></div>
       <div class="field span-full" style="background:var(--surface);padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:8px;">
           <input type="checkbox" name="needsInvoice" id="editTaskNeedsInvoice" ${t.needsInvoice?'checked':''} style="width:18px;height:18px;cursor:pointer;">
@@ -19881,7 +19971,7 @@ function _sheetRowsToGrid(rows, formulaCols) {
       state.whatsappInbox = stamp(data.whatsappInbox);
       if (Array.isArray(data.priceList) && data.priceList.length) { state.priceList = stamp(data.priceList); state.priceListSeeded = true; }
       if (Array.isArray(data.settlements)) state.settlements = stamp(data.settlements);
-      state.customerMeta = data.customerMeta && typeof data.customerMeta === 'object' ? data.customerMeta : {};
+      state.customerMeta = cleanCustomerMeta(data.customerMeta);
       state.dailyNotes = data.dailyNotes && typeof data.dailyNotes === 'object' ? data.dailyNotes : {};
       // Tombstones for restored ids must not win again
       const restored = new Set([...state.tx, ...state.tasks, ...state.products, ...state.whatsappInbox, ...(state.priceList || []), ...(state.settlements || [])].map(r => r.id));
