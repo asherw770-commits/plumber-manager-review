@@ -47,9 +47,16 @@ const EXPECT = [
   ['row', 'T9', 0, 0, 0, 0], ['row', 'T10', 0, 0, 0, 0], ['row', 'T11', 0, 0, 0, 0], ['row', 'T12', 300, 600, 0, 0],
   // all-time
   ['stats.paidYehuda', 3100], ['stats.pendingTotal', 2950], ['stats.totalExpenses', 370], ['stats.totalMaterials', 150], ['stats.netExpected', 5380],
-  // cash basis per month
-  ['month 2026-09 income', 2100], ['month 2026-09 net', 1700], ['month 2026-09 materials', 150], ['month 2026-09 expenses', 250], ['month 2026-09 gross', 2550], ['month 2026-09 partnerCut', 450],
-  ['month 2026-08 income', 1000], // T12's 300 is NOT here — it arrived 2.9 (partial payment by cash date) ['month 2026-08 net', 880], ['month 2026-08 materials', 0], ['month 2026-08 expenses', 120], ['month 2026-08 gross', 1000], ['month 2026-08 partnerCut', 400],
+  // WORK-DATE basis per month (Asher 26.10): income = my share of every job DONE in the month, paid or not (T9 quote, T10 cancelled, T11 scheduled never count).
+  //  Sep: T1 1000 + T2 800 + T3 900 + T5 600 + T6 300 + T8 400 = 4000 · gross: my customers' totals 1000+800+900+900 + partner customers' my share 300+400 = 4300
+  //       partnerCut: T5 300 · materials T1 100 + T2 50 · expenses E1 250 · net 4000-250-150 = 3600
+  //       paid of it: T1 1000 + T3 300 + T5 450x600/900=300 + T8 500x400/1000=200 = 1800 · open 2200
+  ['month 2026-09 income', 4000], ['month 2026-09 net', 3600], ['month 2026-09 materials', 150], ['month 2026-09 expenses', 250], ['month 2026-09 gross', 4300], ['month 2026-09 partnerCut', 300],
+  ['month 2026-09 paid', 1800], ['month 2026-09 open', 2200],
+  //  Aug: T4 600 + T7 400 + T12 900 = 1900 (T12's date is 25.8 — its 300 payment on 2.9 does not move it) · gross 1000+900+400 = 2300 · partnerCut T4 400 · expenses E2 120 · net 1780
+  //       paid of it: T4 600 + T7 400 + T12 300 = 1300 · open 600
+  ['month 2026-08 income', 1900], ['month 2026-08 net', 1780], ['month 2026-08 materials', 0], ['month 2026-08 expenses', 120], ['month 2026-08 gross', 2300], ['month 2026-08 partnerCut', 400],
+  ['month 2026-08 paid', 1300], ['month 2026-08 open', 600],
   // partners screen
   ['partner שלומי owedToHim', 450], ['partner שלומי paidToHim', 100], ['partner שלומי future', 150],
   ['partner אהרן owesMe', 500], ['partner אהרן received', 600], ['partner אהרן owedToHim', 300],
@@ -63,7 +70,7 @@ const EXPECT = [
   ['report.allIn', 6600], ['report.allToPartners', 700], ['report.allOut', 1220],               // partners' cut on my jobs: T4 400 + T5 300
   ['report.allNet', 5380], ['report.handNet', 2580],                                            // = stats.netExpected · = report.net
   // reconciliation
-  ['recon gaps', 0], ['recon gaps with a dateless paid row', 3], // נגבה + רווח נקי + השורה עצמה
+  ['recon gaps', 0], ['recon gaps with a dateless paid row', 5], // הכנסה + נגבה בפועל + רווח נקי + רווח נקי ביד + השורה עצמה
 ];
 
 const LABELS = {}; // row id → "customer · work · date" for readable reports
@@ -98,6 +105,7 @@ function figures(app, rows) {
     const d = app.computeDailyReport(`${m}-01`);
     f[`month ${m} income`] = r2(d.monthIncome); f[`month ${m} net`] = r2(d.monthNet); f[`month ${m} materials`] = r2(d.monthMaterials);
     f[`month ${m} expenses`] = r2(d.monthExpenses); f[`month ${m} gross`] = r2(d.monthGross); f[`month ${m} partnerCut`] = r2(d.monthPartnerCut);
+    f[`month ${m} paid`] = r2(d.monthPaid); f[`month ${m} open`] = r2(d.monthOpen);
     const s = app.computeStats(m);
     f[`statsMonth ${m} paidYehuda`] = r2(s.paidYehuda); f[`statsMonth ${m} pendingTotal`] = r2(s.pendingTotal); f[`statsMonth ${m} netExpected`] = r2(s.netExpected);
   });

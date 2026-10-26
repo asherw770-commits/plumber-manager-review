@@ -40,19 +40,26 @@ function check(txs, today, label) {
   expect(weeks.length === n && weeks[n - 1].current && weeks.slice(0, -1).every(w => !w.current), `${label}: week list shape`);
   expect(weeks.every((w, i) => dow(w.start) === 0 && w.end === (i === n - 1 ? today : app.addDaysISO(w.start, 6)) && (i === 0 || w.start === app.addDaysISO(weeks[i - 1].start, 7))) && today >= weeks[n - 1].start, `${label}: weeks are consecutive Sunday–Saturday and the last one holds today`);
   const whole = app.cashPeriodFigures(from, to);
-  let sum = { collected: 0, partners: 0, gross: 0, expenses: 0, materials: 0, minutes: 0, jobs: 0, noHours: 0, workMine: 0 };
+  let sum = { collected: 0, partners: 0, gross: 0, expenses: 0, materials: 0, minutes: 0, jobs: 0, noHours: 0, workMine: 0, paid: 0, open: 0, paidGross: 0, openGross: 0 };
   weeks.forEach(w => {
     const d = app.cashPeriodFigures(w.start, w.end);
-    for (const k of ['collected', 'partners', 'gross', 'expenses', 'materials', 'net', 'workMine']) expect(near(w[k], d[k]), `${label} week ${w.start}: ${k} ${w[k]} vs ${d[k]}`);
+    for (const k of ['collected', 'partners', 'gross', 'expenses', 'materials', 'net', 'workMine', 'paid', 'open', 'paidGross', 'openGross']) expect(near(w[k], d[k]), `${label} week ${w.start}: ${k} ${w[k]} vs ${d[k]}`);
     for (const k of ['minutes', 'jobs', 'noHours']) expect(w[k] === d[k], `${label} week ${w.start}: ${k} ${w[k]} vs ${d[k]}`);
     for (const k of Object.keys(sum)) sum[k] += w[k];
     expect(near(w.gross - w.partners, w.collected) && near(w.net, w.gross - w.partners - w.expenses - w.materials), `${label} week ${w.start}: נכנס − יצא = ביד`);
     // 3. hours and jobs by a plain loop
     let min = 0, jobs = 0, noh = 0;
     for (const t of txs) { if (t.type !== 'income' || !app.isDoneTx(t)) continue; const dd = t.date || ''; if (dd >= w.start && dd <= w.end) { const m = Math.max(0, Math.round((Number(t.hours) || 0) * 60)); min += m; jobs++; if (!m) noh++; } }
-    // "נכנס" re-derived the old way (the previous weekly message): my customers' full amount, a partner's customer only my slice
-    let gross = 0;
-    for (const t of txs) { if (t.type !== 'income' || !(app.isPaidTx(t) || (app.txStage(t) === 'partial' && (Number(t.paidAmount) || 0) > 0))) continue; const cd = app.cashDateOf(t) || ''; if (cd >= w.start && cd <= w.end) gross += t.whoseCustomer === 'partner' ? app.collectedYehudaShare(t) : app.collectedAmount(t); }
+    // WORK-DATE basis (26.10), re-derived with plain loops: every job DONE in the week counts, paid or not — a customer's full total, a partner customer's my-share —
+    // and the paid / open split uses the money really received
+    let gross = 0, income = 0, partners = 0, paidG = 0, paidMine = 0;
+    for (const t of txs) {
+      if (t.type !== 'income' || !app.isDoneTx(t) || !(t.date >= w.start && t.date <= w.end)) continue;
+      const total = Number(t.total) || 0, pa = Number(t.partnerAmount) || 0, mine = total - pa, partnerOwned = t.whoseCustomer === 'partner';
+      gross += partnerOwned ? mine : total; income += mine; partners += partnerOwned ? 0 : pa;
+      paidG += partnerOwned ? app.collectedYehudaShare(t) : app.collectedAmount(t); paidMine += app.collectedYehudaShare(t);
+    }
+    expect(near(w.collected, income) && near(w.partners, partners) && near(w.paid, paidMine) && near(w.open, income - paidMine) && near(w.paidGross, paidG) && near(w.openGross, gross - paidG), `${label} week ${w.start}: income/partners/paid/open vs independent`);
     expect(near(w.gross, gross), `${label} week ${w.start}: נכנס ${w.gross} vs independent ${gross}`);
     expect(w.minutes === min && w.jobs === jobs && w.noHours === noh, `${label} week ${w.start}: hours/jobs ${w.minutes}/${w.jobs}/${w.noHours} vs loop ${min}/${jobs}/${noh}`);
   });
@@ -76,7 +83,7 @@ function check(txs, today, label) {
   for (const mode of ['months', 'weeks']) expect(!/NaN|undefined|Infinity/.test(app.periodsTabHTML(mode)), `${label}: ${mode} tab is clean`);
   // 6. the copyable message uses the same numbers
   const wc = app.weekSummaryCompare(today), msg = app.buildWeekly(today);
-  expect(msg.includes('נכנס: ' + app.fmt(wc.cur.gross) + '₪') && msg.includes('סה"כ ביד: ' + app.fmt(wc.cur.net) + '₪') && !/NaN|undefined/.test(msg), `${label}: message carries the week's figures`);
+  expect(msg.includes('נכנס (עבודות שבוצעו): ' + app.fmt(wc.cur.gross) + '₪') && msg.includes('סה"כ רווח: ' + app.fmt(wc.cur.net) + '₪') && !/NaN|undefined/.test(msg), `${label}: message carries the week's figures`);
   expect(near(wc.cur.gross - (wc.cur.partners + wc.cur.expenses + wc.cur.materials), wc.cur.net), `${label}: message figures reconcile`);
   if (dow(today) === 0) expect(wc.to === app.addDaysISO(wc.start, 6) && wc.start === app.addDaysISO(app.weekStartISO(today), -7), `${label}: on a Sunday the message covers the week that just ended`);
   else expect(wc.start === app.weekStartISO(today) && wc.to === today, `${label}: message covers this week up to today`);
@@ -111,6 +118,32 @@ for (let i = 0; i < 40; i++) {
   app.state.config = { workTypeMap: { 'א': 'ק1', 'ב': 'ק2', 'ג': 'ק3' } };
   const order = app.workProfitReport(app.state.tx).cats.map(c => c.cat + ':' + c.pct);
   expect(order.join() === 'ק1:90,ק3:50,ק2:null', 'categories with no percentage come last: ' + order);
+}
+// THE RULE (Asher 26.10): income belongs to the month/week the WORK was done — paid or not; "paid" only splits it. A late payment never moves it.
+{
+  app.state.config = {}; app.state.tasks = [];
+  const job = o => ({ type: 'income', whoseCustomer: 'mine', partnerName: '', partnerAmount: 0, materials: 0, hours: 1, customer: 'לקוח', work: 'עבודה', ...o });
+  app.state.tx = [
+    job({ id: 'u1', stage: 'unpaid', date: '2026-09-28', total: 1000 }),                                        // done in September, nothing paid yet
+    job({ id: 'p1', stage: 'paid', date: '2026-09-29', paidDate: '2026-10-03', total: 500 }),                     // done in September, paid in October
+    job({ id: 'p2', stage: 'partial', date: '2026-10-02', paidDate: '2026-10-05', paidAmount: 200, total: 800 }),  // done in October, 200 of 800 in
+    job({ id: 'q1', stage: 'quote', date: '2026-09-30', total: 9999 }), job({ id: 'q2', stage: 'scheduled', date: '2026-09-30', total: 9999 }), job({ id: 'q3', stage: 'cancelled', date: '2026-09-30', total: 9999 }),
+    { id: 'x1', type: 'expense', stage: 'paid', date: '2026-10-04', total: 100, category: 'דלק' }];
+  const sep = app.cashPeriodFigures('2026-09-01', '2026-09-30'), oct = app.cashPeriodFigures('2026-10-01', '2026-10-31');
+  expect(sep.collected === 1500 && sep.paid === 500 && sep.open === 1000 && sep.jobs === 2, `September: income 1500 (the unpaid job counts, the October payment does not move the second one): ${JSON.stringify([sep.collected, sep.paid, sep.open, sep.jobs])}`);
+  expect(oct.collected === 800 && oct.paid === 200 && oct.open === 600 && oct.expenses === 100 && oct.net === 700, `October: income 800 (paid 200, open 600), expenses 100: ${JSON.stringify([oct.collected, oct.paid, oct.open, oct.expenses, oct.net])}`);
+  const rSep = app.computeDailyReport('2026-09-15'), rOct = app.computeDailyReport('2026-10-15');
+  expect(rSep.monthIncome === 1500 && rSep.monthPaid === 500 && rSep.monthOpen === 1000 && rSep.monthNet === 1500, 'the monthly report agrees for September');
+  expect(rOct.monthIncome === 800 && rOct.monthPaid === 200 && rOct.monthOpen === 600 && rOct.monthNet === 700, 'the monthly report agrees for October');
+  const day = app.computeDailyReport('2026-09-28'); expect(day.dayIncome === 1000 && day.dayPaid === 0 && day.dayOpen === 1000, 'a day counts its unpaid job too');
+  // paying the open job later changes "paid", never the month
+  app.state.tx.find(t => t.id === 'u1').stage = 'paid'; app.state.tx.find(t => t.id === 'u1').paidDate = '2026-11-20';
+  const sep2 = app.cashPeriodFigures('2026-09-01', '2026-09-30'), nov = app.cashPeriodFigures('2026-11-01', '2026-11-30');
+  expect(sep2.collected === 1500 && sep2.paid === 1500 && sep2.open === 0 && nov.collected === 0, 'a payment in November leaves September income at 1500 (paid now 1500) and November at 0');
+  // gross and partner cut: my customer with a partner cut, and a partner's customer
+  app.state.tx = [job({ id: 'm1', stage: 'unpaid', date: '2026-10-10', total: 1000, partnerAmount: 300, partnerName: 'אהרן' }), job({ id: 'm2', stage: 'unpaid', date: '2026-10-11', total: 600, partnerAmount: 400, partnerName: 'אהרן', whoseCustomer: 'partner' })];
+  const g = app.cashPeriodFigures('2026-10-01', '2026-10-31');
+  expect(g.gross === 1000 + 200 && g.partners === 300 && g.collected === 700 + 200 && g.net === 900, `gross = my customer's total + my share of the partner's customer; partners = the cut on mine: ${JSON.stringify([g.gross, g.partners, g.collected])}`);
 }
 if (fails) { console.error(`\n${fails} failure(s)`); process.exit(1); }
 console.log('✅ week-income-check: הכנסה ושעות לפי שבוע (ראשון–שבת) — טווח של חודש שלם זהה לדוח החודשי, השבועות מסתכמים לטווח, שעות מחושבות מחדש בנפרד, בלי סטייה בשעון חורף (נתונים אמיתיים + 40 ספרים אקראיים)');

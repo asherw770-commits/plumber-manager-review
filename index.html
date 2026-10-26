@@ -4489,6 +4489,12 @@ function collectedAmount(tx) {
   }
   return 0;
 }
+// INCOME BASIS (Asher 26.10): a job's income belongs to the day/month the WORK was done (its date) — paid or not. "Paid" is a separate mark, set only when the
+// money really arrived (collectedAmount & co. above stay the source for debts, partner balances and "came in today"). These three give the income side of the
+// day / week / month reports: my share, the gross that passed through me, and the partners' cut of my own customers' jobs.
+function earnedYehudaShare(tx) { return tx.type === 'income' && isDoneTx(tx) ? yehudaShare(tx) : 0; }
+function earnedGross(tx) { return tx.type === 'income' && isDoneTx(tx) ? (tx.whoseCustomer === 'partner' ? yehudaShare(tx) : (Number(tx.total) || 0)) : 0; }
+function earnedPartnerCut(tx) { return tx.type === 'income' && isDoneTx(tx) && tx.whoseCustomer !== 'partner' ? (Number(tx.partnerAmount) || 0) : 0; }
 // The amount still owed on this tx.
 function pendingAmount(tx) {
   if (isPipelineTx(tx)) return 0;
@@ -7830,7 +7836,7 @@ function workProfitPanelHTML(txs) {
   </div>`;
 }
 // ── "חודשים ושבועות" tab of the profit screen (Asher 25.10) ──
-// Per period: נכנס (what reached my hands, gross), יצא (partners' cut / expenses / materials), סה"כ ביד, hours. Months also carry the expenses by
+// Per period (by WORK date): נכנס (gross of the jobs done, split paid / still open), יצא (partners' cut / expenses / materials), סה"כ רווח, hours. Months also carry the expenses by
 // category and the checks that show the split into months is right.
 function periodsTabHTML(mode) {
   const today = todayISO(), money = v => `${fmt(v)}₪`;
@@ -7847,16 +7853,16 @@ function periodsTabHTML(mode) {
     const cell = (title, cur, prev, d, pct, f) => `<div style="flex:1;min-width:150px;padding:12px 14px;background:var(--bg-sunken, rgba(0,0,0,.04));border-radius:12px;"><div style="font-size:12px;color:var(--text-tertiary);">${title}</div><div style="font-size:22px;font-weight:800;" class="mono">${f(cur)}</div><div style="font-size:12.5px;">${arrow(d, pct, f)} <span style="color:var(--text-tertiary);">מול ${f(prev)} בשבוע שעבר עד אותו יום</span></div></div>`;
     strip = `<div class="panel" style="margin-bottom:14px;"><div class="panel-header"><div class="panel-title">השבוע (עד היום) מול שבוע שעבר (עד אותו יום)</div></div>
       <div class="panel-body" style="display:flex;gap:10px;flex-wrap:wrap;">
-        ${cell('סה"כ ביד', c.cur.net, c.prev.net, c.netDiff, c.netPct, money)}
-        ${cell('נכנס', c.cur.gross, c.prev.gross, c.cur.gross - c.prev.gross, c.prev.gross > 0.5 ? Math.round((c.cur.gross - c.prev.gross) / c.prev.gross * 100) : null, money)}
+        ${cell('סה"כ רווח', c.cur.net, c.prev.net, c.netDiff, c.netPct, money)}
+        ${cell('נכנס (עבודות שבוצעו)', c.cur.gross, c.prev.gross, c.cur.gross - c.prev.gross, c.prev.gross > 0.5 ? Math.round((c.cur.gross - c.prev.gross) / c.prev.gross * 100) : null, money)}
         ${cell('שעות עבודה', c.cur.minutes, c.prev.minutes, c.hoursDiff, c.hoursPct, fmtHM)}
       </div></div>`;
   }
-  const head = `<thead><tr><th>${weeks ? 'שבוע (א׳–ש׳)' : 'חודש'}</th><th class="num">נכנס</th><th class="num">יצא: שותפים</th><th class="num">הוצאות</th><th class="num">חומרים</th><th class="num">סה"כ ביד</th><th class="num">שעות עבודה</th><th class="num">עבודות</th>${weeks ? '' : '<th class="num">שווי העבודות (החלק שלי)</th>'}</tr></thead>`;
-  const body = [...rows].reverse().map(r => `<tr${r.current ? ' style="font-weight:700;"' : ''}><td>${label(r)}</td><td class="num mono">${money(r.gross)}</td><td class="num mono">${money(r.partners)}</td><td class="num mono">${money(r.expenses)}</td><td class="num mono">${money(r.materials)}</td>
-      <td class="num mono" style="${colNet(r.net)}">${money(r.net)}</td><td class="num mono"${r.noHours ? ` title="${r.noHours} עבודות בלי זמן עבודה רשום"` : ''}>${fmtHM(r.minutes)}${r.noHours ? '*' : ''}</td><td class="num mono">${r.jobs}</td>${weeks ? '' : `<td class="num mono">${money(r.workMine)}</td>`}</tr>`).join('');
-  const foot = `<tfoot><tr style="font-weight:800;"><td>סה"כ 12 ${weeks ? 'שבועות' : 'חודשים'}</td><td class="num mono">${money(sumOf('gross'))}</td><td class="num mono">${money(sumOf('partners'))}</td><td class="num mono">${money(sumOf('expenses'))}</td><td class="num mono">${money(sumOf('materials'))}</td><td class="num mono" style="${colNet(sumOf('net'))}">${money(sumOf('net'))}</td><td class="num mono">${fmtHM(sumOf('minutes'))}</td><td class="num mono">${sumOf('jobs')}</td>${weeks ? '' : `<td class="num mono">${money(sumOf('workMine'))}</td>`}</tr></tfoot>`;
-  const note = `<div style="padding:8px 14px;font-size:12px;color:var(--text-tertiary);line-height:1.6;">נכנס = כל מה שנגבה מהלקוחות שלי + החלק שלי בעבודות של שותפים (לפי תאריך התשלום). יצא = חלק השותפים שעבר דרכי + הוצאות (לפי תאריכן) + חומרים (לפי תאריך העבודה). סה"כ ביד = נכנס − יצא. שעות ועבודות לפי תאריך העבודה, כולל עבודות של שותפים; * = יש עבודות בלי זמן רשום והן לא נכנסות לשעות.${weeks ? ' שבוע שחוצה חודש נספר שלם, לכן שבועות של חודש לא חייבים להסתכם לסכום החודשי.' : ''}</div>`;
+  const head = `<thead><tr><th>${weeks ? 'שבוע (א׳–ש׳)' : 'חודש'}</th><th class="num">נכנס (עבודות שבוצעו)</th><th class="num">מתוכו שולם</th><th class="num">עוד לא שולם</th><th class="num">יצא: שותפים</th><th class="num">הוצאות</th><th class="num">חומרים</th><th class="num">סה"כ רווח</th><th class="num">שעות עבודה</th><th class="num">עבודות</th></tr></thead>`;
+  const body = [...rows].reverse().map(r => `<tr${r.current ? ' style="font-weight:700;"' : ''}><td>${label(r)}</td><td class="num mono">${money(r.gross)}</td><td class="num mono">${money(r.paidGross)}</td><td class="num mono">${money(r.openGross)}</td><td class="num mono">${money(r.partners)}</td><td class="num mono">${money(r.expenses)}</td><td class="num mono">${money(r.materials)}</td>
+      <td class="num mono" style="${colNet(r.net)}">${money(r.net)}</td><td class="num mono"${r.noHours ? ` title="${r.noHours} עבודות בלי זמן עבודה רשום"` : ''}>${fmtHM(r.minutes)}${r.noHours ? '*' : ''}</td><td class="num mono">${r.jobs}</td></tr>`).join('');
+  const foot = `<tfoot><tr style="font-weight:800;"><td>סה"כ 12 ${weeks ? 'שבועות' : 'חודשים'}</td><td class="num mono">${money(sumOf('gross'))}</td><td class="num mono">${money(sumOf('paidGross'))}</td><td class="num mono">${money(sumOf('openGross'))}</td><td class="num mono">${money(sumOf('partners'))}</td><td class="num mono">${money(sumOf('expenses'))}</td><td class="num mono">${money(sumOf('materials'))}</td><td class="num mono" style="${colNet(sumOf('net'))}">${money(sumOf('net'))}</td><td class="num mono">${fmtHM(sumOf('minutes'))}</td><td class="num mono">${sumOf('jobs')}</td></tr></tfoot>`;
+  const note = `<div style="padding:8px 14px;font-size:12px;color:var(--text-tertiary);line-height:1.6;">ההכנסה שייכת לתקופה שבה <b>בוצעה העבודה</b> (לפי תאריך העבודה), שולמה או לא. "מתוכו שולם" = כמה מהעבודות של התקופה כבר נכנס בפועל; "עוד לא שולם" = מה שעדיין לגבייה (עבודה נחשבת "שולם" רק אחרי שהכסף נכנס). נכנס = כל סכום העבודות שלי + החלק שלי בעבודות של שותפים. יצא = חלק השותפים בעבודות שלי + הוצאות (לפי תאריכן) + חומרים. סה"כ רווח = נכנס − יצא. שעות ועבודות לפי תאריך העבודה; * = יש עבודות בלי זמן רשום והן לא נכנסות לשעות.${weeks ? ' שבוע שחוצה חודש נספר שלם, לכן שבועות של חודש לא חייבים להסתכם לסכום החודשי.' : ''}</div>`;
   let html = seg + strip + `<div class="panel" style="margin-bottom:16px;"><div class="panel-header"><div class="panel-title">${weeks ? '📅 לפי שבוע' : '🗓 לפי חודש'} — נכנס, יצא, סה"כ ביד</div></div>
     <div class="panel-body no-pad"><div class="table-wrap"><table>${head}<tbody>${body}</tbody>${foot}</table></div>${note}</div></div>`;
   if (!weeks) {
@@ -7871,7 +7877,7 @@ function periodsTabHTML(mode) {
         <tfoot><tr style="font-weight:800;"><td>סה"כ</td>${rows.map((r, i) => `<td class="num mono">${fmt(cat.reduce((a, c) => a + c.by[i], 0))}</td>`).join('')}<td class="num mono">${fmt(catSum)}</td></tr></tfoot></table></div></div></div>
       <div class="panel" style="margin-bottom:16px;"><div class="panel-header"><div class="panel-title">🔎 בדיקות — האם החלוקה לחודשים נכונה</div></div><div class="panel-body no-pad" style="padding:6px 0;">
         ${ok(Math.abs(catSum - tabSum) < 0.01, `סכום ההוצאות לפי קטגוריות (${money(catSum)}) = סכום ההוצאות בטבלת החודשים (${money(tabSum)})`)}
-        ${ok(!bad.length, bad.length ? `סה"כ ביד שונה מהסיכום החודשי ב: ${bad.map(x => mrMonthName(x.r.key)).join(', ')}` : 'סה"כ ביד בכל חודש זהה לסיכום החודשי של האפליקציה')}
+        ${ok(!bad.length, bad.length ? `סה"כ רווח שונה מהסיכום החודשי ב: ${bad.map(x => mrMonthName(x.r.key)).join(', ')}` : 'סה"כ רווח בכל חודש זהה לסיכום החודשי של האפליקציה')}
         ${`<div style="padding:6px 14px;font-size:13px;color:var(--text-secondary);">ℹ️ כל ההוצאות במערכת: ${ck.total} בסך ${money(ck.sum)} · ב-12 החודשים האחרונים: ${money(tabSum)}${ck.sum - tabSum > 0.01 ? ` · מחוץ ל-12 החודשים (קודם, עתידי או בלי תאריך): ${money(ck.sum - tabSum)}` : ''}</div>`}
         ${list(ck.noDate, 'בלי תאריך תקין — לא נספרות באף חודש')}${list(ck.future, 'בתאריך עתידי')}${list(ck.noCategory, 'בלי קטגוריה')}${list(ck.badAmount, 'עם סכום 0 או שלילי')}${list(ck.dups, 'שנראות כפולות (אותו תאריך, סכום, קטגוריה ותיאור)')}
         ${!(ck.noDate.length + ck.future.length + ck.noCategory.length + ck.badAmount.length + ck.dups.length) ? ok(true, 'כל ההוצאות עם תאריך, קטגוריה וסכום תקינים, ואין כפולות') : ''}
@@ -8033,9 +8039,9 @@ function renderMonthlyReport(mk) {
         <div class="mr-meta">הופק ${stamp}<br>השוואה ל${prevName}</div>
       </div>
       <div class="mr-cards">
-        ${card('💰 נגבה החודש (החלק שלי)', money(c.monthIncome), dl(c.monthIncome, cp.monthIncome), true)}
+        ${card('💰 הכנסה החודש (עבודות שבוצעו, החלק שלי)', money(c.monthIncome), `${dl(c.monthIncome, cp.monthIncome)}${pe ? '' : ' · '}שולם ${money(c.monthPaid)} · פתוח ${money(c.monthOpen)}`, true)}
         ${card('🔧 עבודות שבוצעו (החלק שלי)', money(d.w.mine), `${d.w.jobs} עבודות${pe ? '' : ' · ' + mrDelta(d.w.mine, d.wPrev.mine)}`)}
-        ${card('📊 רווח נקי ביד החודש', money(c.monthNet), dl(c.monthNet, cp.monthNet), true)}
+        ${card('📊 רווח נקי החודש', money(c.monthNet), dl(c.monthNet, cp.monthNet), true)}
         ${card('📤 הוצאות + חומרים', money(c.monthExpenses + c.monthMaterials), dl(c.monthExpenses + c.monthMaterials, cp.monthExpenses + cp.monthMaterials, { invert: true }))}
         ${card('⏳ ממתין לגבייה', money(d.pendingNow), `נכון ל־${shortDate(todayISO())} · ${d.debts.length} עסקאות`)}
         ${card('🤝 חוב שלי לשותפים', money(d.owedNow), `נכון ל־${shortDate(todayISO())}`)}
@@ -8046,8 +8052,9 @@ function renderMonthlyReport(mk) {
       <div class="mr-tw"><table>
         <thead><tr><th></th><th class="n">${monthName}</th><th class="n">${prevName}</th><th class="n">שינוי</th></tr></thead>
         <tbody>
-          ${cmpRow('נגבה — החלק שלי', c.monthIncome, cp.monthIncome)}
-          ${cmpRow('ברוטו שנגבה דרכי', c.monthGross, cp.monthGross)}
+          ${cmpRow('הכנסה — החלק שלי (עבודות שבוצעו)', c.monthIncome, cp.monthIncome)}
+          ${cmpRow('מתוכה שולם', c.monthPaid, cp.monthPaid)}
+          ${cmpRow('ברוטו של העבודות (כולל חלק שותפים)', c.monthGross, cp.monthGross)}
           ${cmpRow('מתוכו חלק שותפים', c.monthPartnerCut, cp.monthPartnerCut, { invert: true })}
           ${cmpRow('הוצאות', c.monthExpenses, cp.monthExpenses, { invert: true })}
           ${cmpRow('חומרים', c.monthMaterials, cp.monthMaterials, { invert: true })}
@@ -8285,17 +8292,17 @@ function renderAdminHome() {
   const byOwner = ownerEntriesToday();
   if (byOwner.length) rows.push(row('📲', 'מה יהודה הכניס היום', 'לידיעה — כבר בספרים', byOwner.length, '', 'var(--info)') + byOwner.slice(0, 8).map(({ kind, t }) => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 14px;padding-inline-start:48px;font-size:13px;">
-      <div style="flex:1;min-width:0;">${kind === 'task' ? (t.status === 'done' ? '✅' : '📅') : t.type === 'expense' ? '⛽' : '💰'} <b>${escapeHtml(t.task || t.work || t.customer || '')}</b>${t.customer && (t.task || t.work) ? ' · ' + escapeHtml(t.customer) : ''}${kind === 'tx' ? ` · ${fmt(t.total)}₪` : Number(t.cost) ? ` · ${fmt(t.cost)}₪` : ''}</div>
+      <div style="flex:1;min-width:0;">${kind === 'task' ? (t.status === 'done' ? '✅' : '📅') : t.type === 'expense' ? '⛽' : '💰'} <b>${escapeHtml(t.task || t.work || t.customer || '')}</b>${t.customer && (t.task || t.work) ? ' · ' + escapeHtml(t.customer) : ''}</div>
       ${kind === 'tx' ? `<button class="btn btn-sm btn-ghost" data-edit-tx="${escapeAttr(t.id)}">✏️</button>` : ''}
     </div>`).join(''));
   const cq = collectionQueue();
   { const rs = collectionRuleStats(state.tx, isoDaysAgo(30), todayISO());
     if (rs.pct !== null) rows.push(row('📏', 'עמידה בכלל הגבייה (30 יום)', `${rs.pct}% שולמו ביום העבודה · ${rs.late} באיחור · ${rs.openBreach} פתוחות מעבר ליום העבודה`, rs.pct + '%', go('data-view="collection"', 'לגבייה'), rs.pct >= 80 ? 'var(--success)' : rs.pct >= 50 ? 'var(--warning)' : 'var(--danger)')); }
   { const gaps = recurringExpenseGaps(state.tx, todayISO(), recurringItems());
-    if (gaps.length) rows.push(row('📌', 'הוצאות קבועות שעוד לא הוזנו', gaps.map(g => escapeHtml(g.name) + ' <span style="color:var(--text-tertiary)">(' + (RECURRING_FREQ_LABEL[g.freq] || '') + ')</span>' + (g.lastAmount ? ' ' + fmt(g.lastAmount) + '₪' : '')).join(' · '), gaps.length, gaps.map(g => `<button class="btn btn-sm btn-ghost" data-quick-expense="${escapeAttr(g.category)}" data-amt="${g.lastAmount || ''}" data-name="${escapeAttr(g.name)}" data-rec-id="${escapeAttr(g.id)}">+ ${escapeHtml(g.name)}</button>`).join(' '), 'var(--info)')); }
+    if (gaps.length) rows.push(row('📌', 'הוצאות קבועות שעוד לא הוזנו', gaps.map(g => escapeHtml(g.name) + ' <span style="color:var(--text-tertiary)">(' + (RECURRING_FREQ_LABEL[g.freq] || '') + ')</span>' + '').join(' · '), gaps.length, gaps.map(g => `<button class="btn btn-sm btn-ghost" data-quick-expense="${escapeAttr(g.category)}" data-amt="${g.lastAmount || ''}" data-name="${escapeAttr(g.name)}" data-rec-id="${escapeAttr(g.id)}">+ ${escapeHtml(g.name)}</button>`).join(' '), 'var(--info)')); }
   { const old30 = cq.filter(x => x.days >= 30);
-    if (old30.length) rows.push(row('⏳', 'חובות ישנים — מעל 30 יום', old30.slice(0, 3).map(x => escapeHtml(x.t.customer || x.t.work || 'ללא שם') + ' ' + fmt(x.amount) + '₪ (' + x.days + ' ימים)').join(' · ') + (old30.length > 3 ? ` · ועוד ${old30.length - 3}` : '') + ` — סה"כ ${fmt(old30.reduce((a, x) => a + x.amount, 0))}₪`, old30.length, go('data-view="collection"', 'לגבייה'), 'var(--danger)')); }
-  if (cq.length) rows.push(row('💰', 'גבייה — לטיפול שלי', `${fmt(cq.reduce((a, x) => a + x.amount, 0))}₪ · ${cq.filter(x => !x.last).length} עוד לא קיבלו תזכורת`, cq.length, go('data-view="collection"', 'לגבייה'), 'var(--warning)'));
+    if (old30.length) rows.push(row('⏳', 'חובות ישנים — מעל 30 יום', old30.slice(0, 3).map(x => escapeHtml(x.t.customer || x.t.work || 'ללא שם') + ' (' + x.days + ' ימים)').join(' · ') + (old30.length > 3 ? ` · ועוד ${old30.length - 3}` : ''), old30.length, go('data-view="collection"', 'לגבייה'), 'var(--danger)')); }
+  if (cq.length) rows.push(row('💰', 'גבייה — לטיפול שלי', `${cq.length} עבודות · ${cq.filter(x => !x.last).length} עוד לא קיבלו תזכורת`, cq.length, go('data-view="collection"', 'לגבייה'), 'var(--warning)'));
   const badTx = state.tx.map(t => ({ t, bad: txInvariantIssues(t) })).filter(x => x.bad.length);
   if (badTx.length) rows.push(row('🧮', 'עסקאות עם נתון שגוי', badTx.slice(0, 3).map(x => escapeHtml((x.t.customer || x.t.work || 'ללא שם') + ': ' + x.bad[0])).join(' · ') + (badTx.length > 3 ? ' …' : ''), badTx.length, go('data-edit-tx="' + escapeAttr(badTx[0].t.id) + '"', 'תקן'), 'var(--danger)'));
   const suspect_ = suspectIncomingRows();
@@ -8309,7 +8316,7 @@ function renderAdminHome() {
   if (yehudaUpdates.length) rows.push(row('📲', 'עדכונים מיהודה לאישור', '"שילם לי" — לאמת סכום ומי גבה', yehudaUpdates.length, '', 'var(--success)') +
     yehudaUpdates.slice(0, 5).map(t => `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 14px 8px 14px;padding-inline-start:48px;">
-      <div style="flex:1;min-width:0;font-size:13px;"><b>${escapeHtml(t.customer || t.partnerName || t.work || 'ללא שם')}</b> · שילם ${fmt(collectedAmount(t))}₪${t.payment ? ` (${escapeHtml(t.payment)})` : ''} · ${shortDate(t.paidDate || t.date)}</div>
+      <div style="flex:1;min-width:0;font-size:13px;"><b>${escapeHtml(t.customer || t.partnerName || t.work || 'ללא שם')}</b> · סומן כשולם${t.payment ? ` (${escapeHtml(t.payment)})` : ''} · ${shortDate(t.paidDate || t.date)}</div>
       <button class="btn btn-sm btn-ghost" data-edit-tx="${escapeAttr(t.id)}">✏️ תקן</button>
       <button class="btn btn-sm btn-primary" data-approve-owner="${escapeAttr(t.id)}">✔ אשר</button>
     </div>`).join(''));
@@ -8323,7 +8330,7 @@ function renderAdminHome() {
   // 🧹 Data cleanup (moved here from settings, 30.9): duplicates, empty and
   // zero rows, and rows whose details don't add up.
   const cleanCount = issueTx + detectDuplicates().reduce((a, g) => a + g.length - 1, 0) + detectEmptyRows().length + detectZeroRows().length;
-  if (cleanCount) rows.push(row('🧹', 'ניקוי נתונים — כפילויות ועסקאות שגויות', 'כפילויות, עסקאות ריקות או ב-0₪, פרטים חסרים וסכומים שלא מסתדרים', cleanCount, go('data-toggle-cleanup="1"', state._cleanupOpen ? '▲ סגור' : 'פתח'), 'var(--warning)'));
+  if (cleanCount) rows.push(row('🧹', 'ניקוי נתונים — כפילויות ועסקאות שגויות', 'כפילויות, עסקאות ריקות או בלי סכום, פרטים חסרים וסכומים שלא מסתדרים', cleanCount, go('data-toggle-cleanup="1"', state._cleanupOpen ? '▲ סגור' : 'פתח'), 'var(--warning)'));
   const host = document.getElementById('cleanupHost');
   if (host) {
     const open = !!(cleanCount && state._cleanupOpen);
@@ -8334,7 +8341,7 @@ function renderAdminHome() {
     if (pg.length) rows.push(row('🤝', 'אולי הלקוח של השותף?', 'שותף, בלי שם לקוח ובלי טלפון או כתובת — אבל מסומן "הלקוח שלי". לבדוק (שום סכום לא משתנה בלי שתתקן או תאשר)', pg.length, '', 'var(--warning)') +
       pg.slice(0, 6).map(({ kind, r }) => `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;padding-inline-start:48px;">
-      <div style="flex:1;min-width:0;font-size:13px;"><b>${escapeHtml(r.task || r.work || 'ללא שם')}</b> · ${escapeHtml(r.partnerName.trim())} · ${fmt(Number(kind === 'tx' ? r.total : r.cost) || 0)}₪${kind === 'task' ? ' · משימה' : ''}</div>
+      <div style="flex:1;min-width:0;font-size:13px;"><b>${escapeHtml(r.task || r.work || 'ללא שם')}</b> · ${escapeHtml(r.partnerName.trim())}${kind === 'task' ? ' · משימה' : ''}</div>
       <button class="btn btn-sm btn-primary" ${kind === 'tx' ? 'data-edit-tx' : 'data-edit-task'}="${escapeAttr(r.id)}">✏️ בדוק</button>
       <button class="btn btn-sm btn-ghost" data-pguess-ok="${kind}:${escapeAttr(r.id)}" title="נכון שזה הלקוח שלי — אל תזכיר שוב">✔ שלי</button>
     </div>`).join('') + (pg.length > 6 ? `<div style="padding:4px 14px;padding-inline-start:48px;font-size:12px;color:var(--text-tertiary);">ועוד ${pg.length - 6}…</div>` : '')); }
@@ -8358,35 +8365,37 @@ function renderAdminHome() {
   const tone = d => d >= 30 ? 'hot' : d >= 7 ? 'warm' : '';
   const oweRows = owe.slice(0, 6).map(x => `<div class="hh-rw"><div class="hh-row" data-view="collection" role="button" tabindex="0">
       <div class="hh-av ${tone(x.days)}">${escapeHtml(initial(x.t))}</div>
-      <div class="hh-rt"><div>${escapeHtml(x.t.customer || x.t.work || 'ללא שם')}</div><small>${x.today ? 'היום · עוד אפשר לשלם' : x.days + ' ימים בלי תשלום'}${txStage(x.t) === 'partial' ? ' · ' + escapeHtml(partialPaymentText(x.t)) : ''}</small></div>
-      <div class="hh-amt">${fmt(x.amount)}</div></div>
+      <div class="hh-rt"><div>${escapeHtml(x.t.customer || x.t.work || 'ללא שם')}</div><small>${x.today ? 'היום · עוד אפשר לשלם' : x.days + ' ימים בלי תשלום'}${txStage(x.t) === 'partial' ? ' · שולם חלקית' : ''}</small></div>
+      <div class="hh-amt">${x.today ? 'היום' : x.days + ' י׳'}</div></div>
       <button type="button" class="hh-edit" data-edit-tx="${escapeAttr(x.t.id)}" aria-label="עריכת העסקה" title="עריכת העסקה">✏️</button></div>`).join('');
+  // Home shows NO money (Asher 26.10): jobs, hours and what is waiting to be collected as counts. The amounts live in the money screens.
+  const monthStart = todayIso.slice(0, 7) + '-01', dayN = Number(todayIso.slice(8, 10));
+  const monthNow = cashPeriodFigures(monthStart, todayIso);
+  const prevMonthStart = cmp.prevPrefix + '-01', prevMonthTo = cmp.prevPrefix + '-' + String(cmp.prevDay).padStart(2, '0');
+  const monthPrev = cashPeriodFigures(prevMonthStart, prevMonthTo);
+  const jobsDiff = monthNow.jobs - monthPrev.jobs, jobsPct = monthPrev.jobs > 0 ? Math.round(jobsDiff / monthPrev.jobs * 100) : null;
+  const openJobs = owe.length;
+  const partnersWithBalance = pb.filter(p => p.heBroughtMineOwed > 0.005 || p.iBroughtOwedToHim > 0.005).length;
   const hero = `
     <section class="hh">
       <div class="hh-date">${fullHebDate(todayIso)}</div>
-      <div class="hh-label">רווח סופי החודש</div>
-      <button type="button" class="hh-num${cmp.curNet < 0 ? ' neg' : ''}" data-view="reports" aria-label="סיכום כספי">${cmp.curNet < 0 ? '−' : ''}${fmt(Math.abs(cmp.curNet))}<span>₪</span></button>
+      <div class="hh-label">עבודות שבוצעו החודש</div>
+      <button type="button" class="hh-num" data-view="transactions" aria-label="עבודות שבוצעו החודש">${monthNow.jobs}</button>
       <div class="hh-sub">
-        <span class="${cmp.diff >= 0 ? 'up' : 'down'}">${cmp.diff >= 0 ? '▲' : '▼'} ${cmp.pct === null ? fmt(Math.abs(cmp.diff)) + ' ₪' : Math.abs(cmp.pct) + '%'} מול ${prevMonthName}</span>
-        <span>${prevMonthName} עד ה־${cmp.prevDay}: <bdi dir="ltr">${cmp.prevNet < 0 ? '−' : ''}${fmt(Math.abs(cmp.prevNet))} ₪</bdi>${cmp.pct === null ? '' : ` · <bdi dir="ltr">${cmp.diff >= 0 ? '+' : '−'}${fmt(Math.abs(cmp.diff))} ₪</bdi>`}</span>
+        <span class="${jobsDiff >= 0 ? 'up' : 'down'}">${jobsDiff >= 0 ? '▲' : '▼'} ${jobsPct === null ? Math.abs(jobsDiff) + ' עבודות' : Math.abs(jobsPct) + '%'} מול ${prevMonthName}</span>
+        <span>${prevMonthName} עד ה־${cmp.prevDay}: <bdi dir="ltr">${monthPrev.jobs}</bdi> עבודות</span>
+        <span>שעות עבודה החודש: <bdi dir="ltr">${fmtHM(monthNow.minutes)}</bdi></span>
       </div>
       <div class="hh-sub" aria-label="השבוע">
-        <span>השבוע (עד היום): נכנס <bdi dir="ltr">${fmt(wk.cur.gross)} ₪</bdi></span>
-        <span>יצא <bdi dir="ltr">${fmt(wk.cur.partners + wk.cur.expenses + wk.cur.materials)} ₪</bdi></span>
-        <span>סה"כ ביד <bdi dir="ltr">${wk.cur.net < 0 ? '−' : ''}${fmt(Math.abs(wk.cur.net))} ₪</bdi></span>
-        <span class="${wk.netDiff >= 0 ? 'up' : 'down'}">${wk.netDiff >= 0 ? '▲' : '▼'} ${wk.netPct === null ? fmt(Math.abs(wk.netDiff)) + ' ₪' : Math.abs(wk.netPct) + '%'} מול שבוע שעבר</span>
-        <span>שבוע שעבר עד אותו יום: ביד <bdi dir="ltr">${wk.prev.net < 0 ? '−' : ''}${fmt(Math.abs(wk.prev.net))} ₪</bdi></span>
-      </div>
-      <div class="hh-sub" aria-label="שעות עבודה">
-        <span>שעות עבודה השבוע: <bdi dir="ltr">${fmtHM(wk.cur.minutes)}</bdi></span>
-        <span class="${wk.hoursDiff >= 0 ? 'up' : 'down'}">${wk.hoursDiff >= 0 ? '▲' : '▼'} ${wk.hoursPct === null ? fmtHM(Math.abs(wk.hoursDiff)) : Math.abs(wk.hoursPct) + '%'} מול שבוע שעבר</span>
-        <span>שבוע שעבר עד אותו יום: <bdi dir="ltr">${fmtHM(wk.prev.minutes)}</bdi></span>
+        <span>השבוע (עד היום): <bdi dir="ltr">${wk.cur.jobs}</bdi> עבודות · <bdi dir="ltr">${fmtHM(wk.cur.minutes)}</bdi> שעות</span>
+        <span class="${wk.cur.jobs - wk.prev.jobs >= 0 ? 'up' : 'down'}">${wk.cur.jobs - wk.prev.jobs >= 0 ? '▲' : '▼'} ${wk.prev.jobs > 0 ? Math.abs(Math.round((wk.cur.jobs - wk.prev.jobs) / wk.prev.jobs * 100)) + '%' : Math.abs(wk.cur.jobs - wk.prev.jobs) + ' עבודות'} מול שבוע שעבר</span>
+        <span>שבוע שעבר עד אותו יום: <bdi dir="ltr">${wk.prev.jobs}</bdi> עבודות · <bdi dir="ltr">${fmtHM(wk.prev.minutes)}</bdi> שעות</span>
+        <span class="${wk.hoursDiff >= 0 ? 'up' : 'down'}">שעות: ${wk.hoursDiff >= 0 ? '▲' : '▼'} ${wk.hoursPct === null ? fmtHM(Math.abs(wk.hoursDiff)) : Math.abs(wk.hoursPct) + '%'} מול שבוע שעבר</span>
         ${wk.cur.noHours + wk.prev.noHours ? `<span title="עבודות שבוצעו בלי זמן עבודה רשום — לא נכנסות לשעות">${wk.cur.noHours + wk.prev.noHours === 1 ? 'עבודה אחת בלי שעות' : (wk.cur.noHours + wk.prev.noHours) + ' עבודות בלי שעות'}</span>` : ''}
       </div>
-      ${curve}
       <div class="hh-stats">
-        <button type="button" data-view="collection"><b class="mono">${fmt(openDebt)}</b><span>לקוחות חייבים לי</span></button>
-        <button type="button" data-view="partners"><b class="mono">${fmt(heOwes)}</b><span>שותפים חייבים</span></button>
+        <button type="button" data-view="collection"><b class="mono">${openJobs}</b><span>עבודות לגבייה</span></button>
+        <button type="button" data-view="partners"><b class="mono">${partnersWithBalance}</b><span>שותפים עם יתרה</span></button>
         <button type="button" data-view="collection"><b class="mono">${ruleSt.pct === null ? '—' : ruleSt.pct + '%'}</b><span>עמידה בכלל</span></button>
       </div>
     </section>`;
@@ -8405,7 +8414,7 @@ function renderAdminHome() {
     </section>` : '';
   const heroList = `
     <section class="hh-list">
-      <div class="hh-head"><span>לגבייה</span><b class="mono">${fmt(owe.reduce((a, x) => a + x.amount, 0))} ₪</b></div>
+      <div class="hh-head"><span>לגבייה</span><b class="mono">${owe.length} עבודות</b></div>
       ${oweRows || '<div class="hh-empty">אין חובות פתוחים. הכל נגבה.</div>'}
       ${owe.length > 6 ? `<button type="button" class="hh-more" data-view="collection">עוד ${owe.length - 6} חובות ›</button>` : ''}
     </section>`;
@@ -8436,26 +8445,25 @@ function renderAdminHome() {
 function _isoDayNum(iso) { const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 86400000); }
 function addDaysISO(iso, n) { const dt = new Date((_isoDayNum(iso) + n) * 86400000); return dt.toISOString().slice(0, 10); }
 function weekStartISO(iso) { return addDaysISO(iso, -(new Date(_isoDayNum(iso) * 86400000).getUTCDay())); }   // 0 = Sunday
-// One pass over the books, filed into buckets (days, weeks or months): idxOf(isoDate) → bucket number or -1.
-//   collected = my share of what was collected (cash date); partners = the partners' cut of MY customers' payments, which passed through my
-//   hands; gross = collected + partners ("נכנס"); expenses (their date); materials of jobs done (work date); net = collected − expenses − materials
-//   ("סה"כ ביד", the same figure as the monthly net). A partner's own customer only brings my slice in (the rest never reached me).
-//   minutes / jobs / noHours / workMine: jobs DONE on that work date (hours, count, how many have no hours, my share of their value).
+// One pass over the books, filed into buckets (days, weeks or months) by WORK DATE (Asher 26.10): idxOf(isoDate) → bucket number or -1.
+//   collected (= income) = my share of the jobs DONE in the bucket, paid or not; paid = the part of it that has really come in; open = the rest;
+//   partners = the partners' cut of MY customers' jobs; gross = income + partners ("נכנס"); expenses (their date); materials of the jobs done;
+//   net = income − expenses − materials (the monthly net). A partner's own customer only brings my slice in.
+//   minutes / jobs / noHours / workMine: hours, count, jobs without hours, my share of their value (= income) of the same jobs.
 function _bucketFigures(buckets, idxOf) {
-  buckets.forEach(b => Object.assign(b, { collected: 0, partners: 0, expenses: 0, materials: 0, minutes: 0, jobs: 0, noHours: 0, workMine: 0 }));
+  buckets.forEach(b => Object.assign(b, { collected: 0, partners: 0, expenses: 0, materials: 0, minutes: 0, jobs: 0, noHours: 0, workMine: 0, paid: 0, open: 0, paidGross: 0, openGross: 0 }));
   state.tx.forEach(t => {
-    const cd = cashDateOf(t) || '';
-    if (t.type === 'income' && (isPaidTx(t) || (txStage(t) === 'partial' && (Number(t.paidAmount) || 0) > 0))) {
-      const i = idxOf(cd);
-      if (i >= 0) { buckets[i].collected += collectedYehudaShare(t); if (t.whoseCustomer !== 'partner') buckets[i].partners += collectedPartnerShare(t); }
-    }
-    if (t.type === 'expense') { const i = idxOf(cd); if (i >= 0) buckets[i].expenses += Number(t.total) || 0; }
-    if (t.type === 'income' && isDoneTx(t)) {
-      const i = idxOf(t.date || '');
-      if (i >= 0) { const b = buckets[i], m = txMinutes(t); b.materials += Number(t.materials) || 0; b.minutes += m; b.jobs++; if (!m) b.noHours++; b.workMine += yehudaShare(t); }
-    }
+    const i = idxOf(t.date || '');
+    if (i < 0) return;
+    const b = buckets[i];
+    if (t.type === 'expense') { b.expenses += Number(t.total) || 0; return; }
+    if (t.type !== 'income' || !isDoneTx(t)) return;
+    const m = txMinutes(t);
+    b.collected += yehudaShare(t); b.partners += earnedPartnerCut(t); b.materials += Number(t.materials) || 0;
+    b.paid += collectedYehudaShare(t); b.paidGross += t.whoseCustomer === 'partner' ? collectedYehudaShare(t) : collectedAmount(t); b.minutes += m; b.jobs++; if (!m) b.noHours++; b.workMine += yehudaShare(t);
   });
-  buckets.forEach(b => { b.gross = b.collected + b.partners; b.net = b.collected - b.expenses - b.materials; });
+  // open is not clamped: a row with a partner cut above its total (flagged by the live warnings) would otherwise make the buckets stop adding up
+  buckets.forEach(b => { b.income = b.collected; b.gross = b.collected + b.partners; b.open = b.collected - b.paid; b.openGross = b.gross - b.paidGross; b.net = b.collected - b.expenses - b.materials; });
   return buckets;
 }
 // Inclusive date range.
@@ -8484,7 +8492,7 @@ function _weekCompare(start, to, dow) {
   const prevStart = addDaysISO(start, -7), prevTo = addDaysISO(prevStart, dow);
   const cur = cashPeriodFigures(start, to), prev = cashPeriodFigures(prevStart, prevTo);
   const pct = (a, b) => (b > 0.5 ? Math.round((a - b) / b * 100) : null);
-  return { start, to, dow, prevStart, prevTo, cur, prev, diff: cur.collected - prev.collected, pct: pct(cur.collected, prev.collected), netDiff: cur.net - prev.net, netPct: pct(cur.net, prev.net),
+  return { start, to, dow, prevStart, prevTo, cur, prev, jobsDiff: cur.jobs - prev.jobs, diff: cur.collected - prev.collected, pct: pct(cur.collected, prev.collected), netDiff: cur.net - prev.net, netPct: pct(cur.net, prev.net),
     hoursDiff: cur.minutes - prev.minutes, hoursPct: prev.minutes > 0 ? Math.round((cur.minutes - prev.minutes) / prev.minutes * 100) : null };
 }
 // The week the copyable summary covers: this week Sunday → today (sent on Saturday night = the whole week); on a Sunday, the week that just ended.
@@ -8521,12 +8529,10 @@ function homeNetSeries(prefix, dayN) {
   const per = new Array(dayN + 2).fill(0);
   const dayOf = iso => (iso || '').startsWith(prefix) ? Number((iso || '').slice(8, 10)) : 0;
   state.tx.forEach(t => {
-    const cd = cashDateOf(t) || '';
-    if (t.type === 'income' && (isPaidTx(t) || (txStage(t) === 'partial' && (Number(t.paidAmount) || 0) > 0))) {
-      const d = dayOf(cd); if (d >= 1 && d <= dayN) per[d] += collectedYehudaShare(t);
-    }
-    if (t.type === 'expense') { const d = dayOf(cd); if (d >= 1 && d <= dayN) per[d] -= (Number(t.total) || 0); }
-    if (t.type === 'income' && isDoneTx(t)) { const d = dayOf(t.date); if (d >= 1 && d <= dayN) per[d] -= (Number(t.materials) || 0); }
+    const d = dayOf(t.date);   // work-date basis (Asher 26.10): income, expenses and materials all sit on their own date
+    if (d < 1 || d > dayN) return;
+    if (t.type === 'income' && isDoneTx(t)) { per[d] += yehudaShare(t); per[d] -= (Number(t.materials) || 0); }
+    if (t.type === 'expense') per[d] -= (Number(t.total) || 0);
   });
   let acc = 0; const cum = [];
   for (let d = 1; d <= dayN; d++) { acc += per[d]; cum.push(acc); }
@@ -9355,45 +9361,29 @@ function assertFinancialConsistency() {
 }
 
 function computeDailyReport(dateISO) {
-  // Full daily/monthly summary for owner (Yehuda).
-  // CASH-BASIS: revenue is counted on the day/month it was actually collected
-  // (paidDate for full, date for partial/unpaid). Expenses on their tx date.
+  // Full daily/monthly summary.
+  // WORK-DATE BASIS (Asher 26.10): income is counted on the day/month the job was DONE (t.date), whether or not the customer has paid yet; expenses on their
+  // own date; materials on the job's date. `*Paid` / `*Open` split the income of the period into what has really come in and what is still to collect.
   const target = dateISO || todayISO();
   const [y, m] = target.split('-');
   const monthPrefix = `${y}-${m}`;
 
-  // Which "day" does this tx belong to for cash-basis reporting?
-  const cashDate = cashDateOf;
-  const dayTx = state.tx.filter(t => cashDate(t) === target);
-  const monthTx = state.tx.filter(t => (cashDate(t) || '').startsWith(monthPrefix));
+  const dayTx = state.tx.filter(t => (t.date || '') === target);
+  const monthTx = state.tx.filter(t => (t.date || '').startsWith(monthPrefix));
 
   const uniqueCustomers = arr => new Set(arr.filter(t => t.type === 'income').map(t => (t.customer || '').trim()).filter(Boolean)).size;
   const customersToday = uniqueCustomers(dayTx);
   const customersMonth = uniqueCustomers(monthTx);
 
-  // Income filter: paid OR partial (with something actually collected)
-  const isIncomeWithCash = t => t.type === 'income' &&
-    ((isPaidTx(t)) || (txStage(t) === 'partial' && (Number(t.paidAmount) || 0) > 0));
-  const dayCashIncome = dayTx.filter(isIncomeWithCash);
-  const monthCashIncome = monthTx.filter(isIncomeWithCash);
-
-  // Only txs where Yehuda actually collected count toward his "gross" —
-  // partner-collected jobs never touched his hands.
-  const dayInFlow = dayCashIncome.filter(txCountsInGross);
-  const monthInFlow = monthCashIncome.filter(txCountsInGross);
-
-  const dayGross = dayInFlow.reduce((s, t) => s + collectedAmount(t), 0);
-  const monthGross = monthInFlow.reduce((s, t) => s + collectedAmount(t), 0);
-  const dayPartnerCut = dayInFlow.reduce((s, t) => s + collectedPartnerShare(t), 0);
-  const monthPartnerCut = monthInFlow.reduce((s, t) => s + collectedPartnerShare(t), 0);
-  const dayIncome = dayInFlow.reduce((s, t) => s + collectedYehudaShare(t), 0);
-  const monthIncome = monthInFlow.reduce((s, t) => s + collectedYehudaShare(t), 0);
-  // Add the "מגיע לי" from partner-collected jobs where the partner already
-  // brought Yehuda his cut (partnerCollected=true → partnerPending=false).
-  const dayFromPartnerCollect = dayCashIncome.filter(t => !txCountsInGross(t)).reduce((s, t) => s + collectedYehudaShare(t), 0);
-  const monthFromPartnerCollect = monthCashIncome.filter(t => !txCountsInGross(t)).reduce((s, t) => s + collectedYehudaShare(t), 0);
-  const dayIncomeTotal = dayIncome + dayFromPartnerCollect;
-  const monthIncomeTotal = monthIncome + monthFromPartnerCollect;
+  const dayDone = dayTx.filter(t => t.type === 'income' && isDoneTx(t));
+  const monthDone = monthTx.filter(t => t.type === 'income' && isDoneTx(t));
+  const sumOf = (rows, f) => rows.reduce((s, t) => s + f(t), 0);
+  const dayGross = sumOf(dayDone, earnedGross), monthGross = sumOf(monthDone, earnedGross);
+  const dayPartnerCut = sumOf(dayDone, earnedPartnerCut), monthPartnerCut = sumOf(monthDone, earnedPartnerCut);
+  const dayIncomeTotal = sumOf(dayDone, earnedYehudaShare), monthIncomeTotal = sumOf(monthDone, earnedYehudaShare);
+  // Of that income: what has really been collected so far (my share of the money received) and what is still open
+  const dayPaid = sumOf(dayDone, collectedYehudaShare), monthPaid = sumOf(monthDone, collectedYehudaShare);
+  const dayOpen = Math.max(0, dayIncomeTotal - dayPaid), monthOpen = Math.max(0, monthIncomeTotal - monthPaid);
   // Materials are money already out of pocket (Asher 29.9: "כל החומרים מיד"),
   // so they leave the profit on the job's work date — whether or not the job
   // has been collected yet. Same rule as the dashboard's "רווח נקי ביד", so
@@ -9407,9 +9397,9 @@ function computeDailyReport(dateISO) {
   // Net (what actually stays in pocket after partners, materials, and expenses)
   const dayNet = dayIncomeTotal - dayExpenses - dayMaterials;
   const monthNet = monthIncomeTotal - monthExpenses - monthMaterials;
-  // Payment method breakdown — based on what YEHUDA actually received
+  // Payment method breakdown — what YEHUDA actually received that day (by payment date, not work date)
   const byPayment = { 'מזומן': 0, 'אשראי': 0, 'ביט': 0, 'העברה': 0, 'צ\'ק': 0, 'אחר': 0 };
-  dayCashIncome.forEach(t => {
+  state.tx.filter(t => t.type === 'income' && cashDateOf(t) === target && (isPaidTx(t) || (txStage(t) === 'partial' && (Number(t.paidAmount) || 0) > 0))).forEach(t => {
     const p = (t.payment || '').toLowerCase();
     const yehudaCut = collectedYehudaShare(t);
     if (p.includes('מזומן')) byPayment['מזומן'] += yehudaCut;
@@ -9431,8 +9421,7 @@ function computeDailyReport(dateISO) {
     dayGross, monthGross,
     dayPartnerCut, monthPartnerCut,
     dayIncome: dayIncomeTotal, monthIncome: monthIncomeTotal,
-    dayIncomeInFlow: dayIncome, monthIncomeInFlow: monthIncome,
-    dayFromPartnerCollect, monthFromPartnerCollect,
+    dayPaid, monthPaid, dayOpen, monthOpen,
     dayExpenses, monthExpenses, dayNet, monthNet,
     dayMaterials, monthMaterials,
     byPayment,
@@ -9632,7 +9621,7 @@ function renderYehudaHero() {
 
     <!-- 3. Money, big and simple -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-      ${moneyCard('💰 נגבה החודש', r.monthIncome, 'var(--success)')}
+      ${moneyCard('💰 הכנסה החודש', r.monthIncome, 'var(--success)', `שולם ${fmt(r.monthPaid)}₪ · פתוח ${fmt(r.monthOpen)}₪`)}
       ${moneyCard('📊 רווח נקי החודש', r.monthNet, r.monthNet >= 0 ? 'var(--success)' : 'var(--danger)', 'אחרי הוצאות וחומרים')}
       ${moneyCard('⏳ חייבים לי', owedMine + owedPartners, 'var(--warning)', `לקוחות ${fmt(owedMine)}₪ · שותפים ${fmt(owedPartners)}₪`)}
       ${moneyCard('🤝 אני חייב לשותפים', iOwePartners, iOwePartners > 0.005 ? 'var(--danger)' : 'var(--text-tertiary)', iOwePartners > 0.005 ? 'גביתי ועוד לא העברתי' : 'אין חוב')}
@@ -11299,22 +11288,28 @@ function reconcile() {
   const RF = reportFigures('all').F; // סיכום כספי — full summary panels
   // The straight, row-by-row figures
   const T = {
-    collected: sum(done, collectedYehudaShare),
+    collected: sum(done, collectedYehudaShare),         // money really received (my share)
+    earned: sum(done, yehudaShare),                      // income by work date: my share of every job done, paid or not (Asher 26.10)
     materials: sum(done, t => t.materials),
     expenses: sum(exp, t => t.total),
     pending: sum(openDebts, yehudaPending),
     partnersOweMe: sum(openDebts.filter(t => t.whoseCustomer === 'partner'), yehudaPending),
     iOwePartners: sum(inc, owedToPartnerNow),
   };
-  T.net = T.collected - T.expenses - T.materials;
+  T.net = T.collected - T.expenses - T.materials;       // "in hand": what has really come in
+  T.netEarned = T.earned - T.expenses - T.materials;    // the monthly / weekly net
   const checks = [];
   const check = (name, truth, screens) => {
     const vals = Object.entries(screens).map(([where, v]) => ({ where, value: r2(v), gap: r2(v - truth) }));
     checks.push({ name, truth: r2(truth), vals, ok: vals.every(v => Math.abs(v.gap) < 0.01) });
   };
-  check('נגבה — החלק שלי (כל התקופה)', T.collected, {
-    'סיכום כספי — כל התקופה': all.paidYehuda,
+  check('הכנסה — החלק שלי בעבודות שבוצעו (כל התקופה)', T.earned, {
     'סכום כל החודשים (רווחיות / דוח חודשי / סיכום יום)': sum(perMonth, r => r.monthIncome),
+    'סיכום כספי — מאזן רווח והפסד (נכנס פחות לשותפים)': RF.allIn - RF.allToPartners,
+  });
+  check('נגבה בפועל — החלק שלי (כל התקופה)', T.collected, {
+    'סיכום כספי — כל התקופה': all.paidYehuda,
+    'סכום כל החודשים: מהכנסת החודש, כמה שולם': sum(perMonth, r => r.monthPaid),
     'סכום כל החודשים (סיכום כספי לפי חודש)': sum(perMonthStats, x => x.paidYehuda),
     'סיכום כספי — מדדים / רווח והפסד (החלק שלי)': RF.mine,
     'סיכום כספי — מאזן (נכנס פחות לשותפים)': RF.totalIn - RF.outToPartners,
@@ -11329,9 +11324,12 @@ function reconcile() {
     'סיכום כספי — כל התקופה': all.totalExpenses,
     'סיכום כספי — מאזן / תמונת מצב': RF.expenses,
   });
-  check('רווח נקי ביד', T.net, {
-    'סכום כל החודשים (מגמה חודשית / תזרים)': sum(perMonth, r => r.monthNet),
-    'סיכום כספי — מאזן רווח והפסד': RF.net,
+  check('רווח נקי (הכנסה לפי חודש ביצוע)', T.netEarned, {
+    'סכום כל החודשים (מגמה חודשית / טבלת חודשים ושבועות)': sum(perMonth, r => r.monthNet),
+    'סיכום כספי — מאזן רווח והפסד': RF.allNet,
+  });
+  check('רווח נקי ביד (מה שנכנס בפועל)', T.net, {
+    'סיכום כספי — מאזן (תזרים)': RF.net,
     'סיכום כספי — תמונת מצב מפורטת': RF.snapNet,
     'סיכום כספי — מדדים / טבלת רווח והפסד': RF.kpiNet,
   });
@@ -12711,15 +12709,15 @@ function buildDaily() {
     '📋 *סיכום יומי — יהודה קליין אינסטלציה*',
     fullHebDate(today),
     '',
-    `💰 נגבה היום: *${m(r.dayIncome)}*`,
-    `💰 נגבה החודש: ${m(r.monthIncome)}`,
+    `💰 הכנסה היום (עבודות שבוצעו): *${m(r.dayIncome)}* · שולם ${m(r.dayPaid)}`,
+    `💰 הכנסה החודש: ${m(r.monthIncome)} · שולם ${m(r.monthPaid)} · פתוח ${m(r.monthOpen)}`,
     `⏳ פתוח לגבייה (סה"כ): ${m(openDebt)}`,
     '',
     `👥 לקוחות היום: ${r.customersToday}`,
     `👥 לקוחות החודש: ${r.customersMonth}`,
     '',
     `📤 הוצאות + חומרים היום: ${m(r.dayExpenses + r.dayMaterials)} · החודש: ${m(r.monthExpenses + r.monthMaterials)}`,
-    `📊 נטו היום: *${m(r.dayNet)}* · החודש: ${m(r.monthNet)}`,
+    `📊 רווח היום: *${m(r.dayNet)}* · החודש: ${m(r.monthNet)}`,
     '',
     `✅ משימות: בוצעו היום ${doneToday} · להיום ${dueToday}${overdue ? ` · באיחור ${overdue}` : ''}`,
   ].join('\n');
@@ -12732,8 +12730,8 @@ function buildCurrentMessage() {
     : buildWeekly();
 }
 
-// Weekly summary to copy (Asher 25.10): Sunday → today (sent on Saturday night it is the whole week), נכנס / יצא / סה"כ ביד, and the same figures
-// against last week up to the same weekday, with work hours. Figures come from the same helpers as the profit screen (tests/week-income-check.js).
+// Weekly summary to copy (Asher 25.10, work-date basis 26.10): Sunday → today (sent on Saturday night it is the whole week). נכנס = the jobs DONE that week (paid or not,
+// split into paid / still open), יצא = partners + expenses + materials, סה"כ רווח; the same figures against last week up to the same weekday, with work hours.
 function buildWeekly(todayIso) {
   const c = weekSummaryCompare(todayIso || todayISO()), cur = c.cur, prev = c.prev;
   const m = v => `${fmt(v)}₪`, d = iso => shortDate(iso);
@@ -12742,27 +12740,28 @@ function buildWeekly(todayIso) {
   const inRange = iso => iso && iso >= c.start && iso <= c.to;
   const partners = {}, cats = {};
   state.tx.forEach(t => {
-    if (t.type === 'income' && t.whoseCustomer !== 'partner' && (isPaidTx(t) || (txStage(t) === 'partial' && (Number(t.paidAmount) || 0) > 0)) && inRange(cashDateOf(t))) {
-      const v = collectedPartnerShare(t), nm = String(t.partnerName || '').trim() || 'ללא שם';   // same rows as "שותפים" above, so the names add up to it
-      if (v > 0) partners[nm] = (partners[nm] || 0) + v;
-    }
-    if (t.type === 'expense' && inRange(cashDateOf(t))) { const k = expenseCategoryKey(String(t.category || '').trim()) || 'ללא קטגוריה'; cats[k] = (cats[k] || 0) + (Number(t.total) || 0); }
+    if (!inRange(t.date)) return;
+    const pc = earnedPartnerCut(t);
+    if (pc > 0) { const nm = String(t.partnerName || '').trim() || 'ללא שם'; partners[nm] = (partners[nm] || 0) + pc; }   // same rows as "שותפים" above, so the names add up to it
+    if (t.type === 'expense') { const k = expenseCategoryKey(String(t.category || '').trim()) || 'ללא קטגוריה'; cats[k] = (cats[k] || 0) + (Number(t.total) || 0); }
   });
   const out = cur.partners + cur.expenses + cur.materials;
   const lines = [
     '📊 *סיכום שבוע — יהודה קליין אינסטלציה*',
     `שבוע ${d(c.start)}–${d(c.to)}${c.to < addDaysISO(c.start, 6) ? ' (עד היום)' : ' (א׳–ש׳)'}`,
     '',
-    `💰 *נכנס: ${m(cur.gross)}*`,
+    `💰 *נכנס (עבודות שבוצעו): ${m(cur.gross)}*`,
+    `   • שולם בפועל: ${m(cur.paidGross)}`,
+    `   • עוד לא שולם: ${m(cur.openGross)}`,
     `📤 *יצא: ${m(out)}*`
   ];
   if (cur.partners > 0) lines.push(`   • שותפים: ${m(cur.partners)}${Object.keys(partners).length ? ' (' + Object.entries(partners).map(([n, v]) => `${n} ${m(v)}`).join(', ') + ')' : ''}`);
   if (cur.expenses > 0) lines.push(`   • הוצאות: ${m(cur.expenses)}${Object.keys(cats).length ? ' (' + Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${n} ${m(v)}`).join(', ') + ')' : ''}`);
   if (cur.materials > 0) lines.push(`   • חומרים: ${m(cur.materials)}`);
-  lines.push(`✅ *סה"כ ביד: ${m(cur.net)}*`, '',
+  lines.push(`✅ *סה"כ רווח: ${m(cur.net)}*`, '',
     `📈 מול שבוע שעבר (${d(c.prevStart)}–${d(c.prevTo)}):`,
     `   • נכנס: ${m(prev.gross)} · ${arrow(cur.gross - prev.gross, pctOf(cur.gross, prev.gross), m)}`,
-    `   • סה"כ ביד: ${m(prev.net)} · ${arrow(c.netDiff, c.netPct, m)}`,
+    `   • סה"כ רווח: ${m(prev.net)} · ${arrow(c.netDiff, c.netPct, m)}`,
     '',
     `⏱ שעות עבודה: *${fmtHM(cur.minutes)}* מול ${fmtHM(prev.minutes)} · ${arrow(c.hoursDiff, c.hoursPct, fmtHM)}`,
     `🔧 עבודות שבוצעו: ${cur.jobs}${cur.noHours ? ` (${cur.noHours} בלי שעות רשומות)` : ''}`);

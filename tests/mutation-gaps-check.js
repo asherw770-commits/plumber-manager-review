@@ -117,7 +117,7 @@ app.state.tx = [
 const w = app.homeWeekCompare(T);
 eq(w.cur.net, 700 - 80 - 20 - 100, 'this week net'); eq(w.prev.net, 500 - 40, 'last week net'); eq(w.netDiff, (700 - 200) - 460, 'netDiff'); expect(w.netPct === Math.round(((700 - 200) - 460) / 460 * 100), 'netPct ' + w.netPct);
 const msg = app.buildWeekly(T);
-expect(msg.includes('נכנס: ' + app.fmt(1000) + '₪') && msg.includes('יצא: ' + app.fmt(300 + 100 + 100) + '₪') && msg.includes('סה"כ ביד: ' + app.fmt(500) + '₪'), 'message in/out/in-hand:\n' + msg);
+expect(msg.includes('נכנס (עבודות שבוצעו): ' + app.fmt(1000) + '₪') && msg.includes('יצא: ' + app.fmt(300 + 100 + 100) + '₪') && msg.includes('סה"כ רווח: ' + app.fmt(500) + '₪') && msg.includes('שולם בפועל: ' + app.fmt(1000) + '₪') && msg.includes('עוד לא שולם: ' + app.fmt(0) + '₪'), 'message in/out/profit:\n' + msg);
 expect(msg.includes('שותפים: ' + app.fmt(300) + '₪ (אהרן ' + app.fmt(300) + '₪)') && msg.includes('הוצאות: ' + app.fmt(100) + '₪') && msg.includes('דלק ' + app.fmt(80) + '₪') && msg.includes('רכב ' + app.fmt(20) + '₪') && msg.includes('חומרים: ' + app.fmt(100) + '₪'), 'message lines for partners / expense categories / materials');
 expect(msg.includes('▲') && msg.includes('מול שבוע שעבר'), 'message compares with last week');
 
