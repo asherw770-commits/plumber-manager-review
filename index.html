@@ -3046,24 +3046,8 @@
         </div>
       </div>
       <div id="reportsAlerts" style="margin-bottom:16px;"></div>
-      <!-- Asher 1.10: one page — מאזן רווח והפסד + תמונת מצב. Everything below them
-           (KPIs, P&L table, categories, cash flow, רווחיות) was removed on his request. -->
-      <div class="panel" style="margin-bottom:20px;">
-        <div class="panel-header">
-          <div class="panel-title">💰 מאזן רווח והפסד — <span id="reportsSimplePnlLabel" style="color:var(--text-tertiary);font-weight:400;font-size:12px;"></span></div>
-        </div>
-        <div class="panel-body" id="reportsSimplePnl"></div>
-      </div>
-      <div class="panel" style="margin-bottom:20px;">
-        <div class="panel-header"><div class="panel-title">⏱ שווי שעת עבודה <span style="color:var(--text-tertiary);font-weight:400;font-size:12px;">— כל התקופה, נטו אחרי חומרים</span></div><button class="btn btn-sm" data-view="erp">לדוח המלא ›</button></div>
-        <div class="panel-body" id="reportsErp"></div>
-      </div>
-      <details class="panel" style="margin-bottom:20px;">
-        <summary class="panel-header" style="cursor:pointer;list-style:none;user-select:none;">
-          <div class="panel-title">📸 תמונת מצב עסקית מפורטת — <span id="reportsSnapshotLabel" style="color:var(--text-tertiary);font-weight:400;font-size:12px;"></span> <span style="font-size:11px;color:var(--text-tertiary);font-weight:400;">(לחץ להרחבה)</span></div>
-        </summary>
-        <div class="panel-body" id="reportsSnapshot"></div>
-      </details>
+      <!-- Asher 26.10: the financial summary is just five numbers — הכנסות, הוצאות, רווח סופי, נגבה, לגבייה. Nothing else. -->
+      <div id="reportsFive"></div>
       <div style="display:none;"><div id="reportsVatPeriods"></div></div>
     </section>
 
@@ -4209,7 +4193,7 @@ function sanitizeRowFields(r) {
   const ISO = /^\d{4}-\d{2}-\d{2}$/, ENUM = /^[a-z_]{1,24}$/;
   ['date', 'paidDate', 'promiseDate', 'deadline'].forEach(k => { if (k in r && !(typeof r[k] === 'string' && (r[k] === '' || ISO.test(r[k])))) r[k] = ''; });
   if ('deadlineTime' in r && !(typeof r.deadlineTime === 'string' && (r.deadlineTime === '' || /^\d{2}:\d{2}$/.test(r.deadlineTime)))) r.deadlineTime = '';
-  ['total', 'partnerAmount', 'materials', 'hours', 'paidAmount', 'settledPartnerAmount', 'cost', 'myShare', 'costPrice', 'sellPrice', 'bundleSellPrice', 'price', 'priceMax', 'qty'].forEach(k => {   // catalog / price-list numbers too: they are written into value="…" attributes (audit 26.10)
+  ['total', 'partnerAmount', 'materials', 'hours', 'paidAmount', 'settledPartnerAmount', 'cost', 'myShare', 'costPrice', 'sellPrice', 'bundleSellPrice', 'price', 'priceMax', 'qty', 'spreadTotal', 'spreadMonths', 'spreadIndex', 'spreadDay'].forEach(k => {   // catalog / price-list numbers too: they are written into value="…" attributes (audit 26.10)
     if (!(k in r)) return;
     const v = r[k];
     if (typeof v === 'number') { if (!isFinite(v)) r[k] = 0; }
@@ -4217,6 +4201,7 @@ function sanitizeRowFields(r) {
     else if (v !== null && v !== undefined) r[k] = 0;
   });
   if ('type' in r && r.type !== 'income' && r.type !== 'expense') r.type = 'income';
+  if ('spreadFrom' in r && !(typeof r.spreadFrom === 'string' && /^\d{4}-\d{2}$/.test(r.spreadFrom))) { delete r.spreadFrom; delete r.spreadMonths; }
   ['stage', 'status', 'lifecycleStatus', 'whoseCustomer', 'ownership', 'kind', 'invoiceStatus'].forEach(k => { if (k in r && r[k] !== '' && r[k] != null && !(typeof r[k] === 'string' && ENUM.test(r[k]))) delete r[k]; });
   ['work', 'address', 'phone', 'customer', 'notes', 'partnerName', 'payment', 'category', 'task', 'invoiceNo', 'invoiceIssuer', 'executedBy', 'cancelReason', 'workCategory', 'name', 'note', 'sku', 'supplier'].forEach(k => { if (k in r && r[k] !== null && typeof r[k] === 'object') r[k] = ''; });
   // A customer / partner called __x__ would be a reserved Firestore field name once it becomes a customerMeta key (the whole save would fail), and __proto__ breaks the name maps.
@@ -6069,7 +6054,7 @@ function expenseCategoryKey(c) { return EXPENSE_CAT_ALIAS[c] || c; }
 // ═══ Fixed (recurring) expenses: monthly / every 3 months / yearly, defined by Asher in Settings (state/config.recurringExpenses) ═══
 // An item: { id, name, category, amount (usual, optional), freq: 'monthly'|'quarterly'|'yearly', month (1-12, yearly only) }.
 // Until he defines his own list, the five monthly defaults below apply.
-const RECURRING_FREQ_LABEL = { monthly: 'כל חודש', quarterly: 'כל 3 חודשים', yearly: 'פעם בשנה' };
+const RECURRING_FREQ_LABEL = { monthly: 'כל חודש', bimonthly: 'כל חודשיים', quarterly: 'כל 3 חודשים', yearly: 'פעם בשנה' };
 function defaultRecurringItems() { return FIXED_EXPENSE_CATEGORIES.map(c => ({ id: 'def_' + c, name: c, category: c, amount: null, freq: 'monthly' })); }
 function recurringItems() { const c = state.config && state.config.recurringExpenses; return Array.isArray(c) ? c.filter(x => x && x.id && x.name && !x.off) : defaultRecurringItems(); }
 // Period an expense date falls in for an item's frequency: '2026-10' / '2026-Q4' / '2026'.
@@ -6083,6 +6068,7 @@ function recurringExpenseGaps(txs, todayIso, items) {
   const out = [], exps = (txs || []).filter(t => t && t.type === 'expense');
   const curM = Number(String(todayIso || '').slice(5, 7)) || 0;
   items.forEach(it => {
+    if (it.day) return;                                    // items with a due day are handled by the scheduled-expenses engine
     const freq = it.freq || 'monthly';
     if (freq === 'yearly' && curM < (Number(it.month) || 1)) return;             // not yet due this year
     const sameCat = items.filter(x => expenseCategoryKey(x.category) === expenseCategoryKey(it.category)).length;
@@ -6093,6 +6079,134 @@ function recurringExpenseGaps(txs, todayIso, items) {
     out.push({ id: it.id, name: it.name, category: it.category, freq, lastAmount: last ? (Number(last.total) || 0) : (Number(it.amount) || null), lastDate: last ? last.date : null });
   });
   return out;
+}
+// ═══ Scheduled expenses + spread expenses (Asher 26.10) ═══
+// 1) A fixed expense can have a due DAY of the month, a rhythm (every N months from an anchor month), an automatic entry and a reminder:
+//    "משכורת לאשר" = 2,500₪ on the 2nd of every month, entered by itself; "משכורת ליחיאל" = every second month on the 15th, as a reminder.
+//    Rows made by the engine have a fixed id (rec_<item>_<YYYY-MM>) so two devices can never enter the same month twice, and a deleted one is never re-created.
+// 2) An expense paid once but meant for a year (insurance) is SPREAD: the row keeps its first portion, the other months' portions appear (spread_<id>_<k>) as
+//    each month arrives — never backwards, never ahead. The total never changes; "undo" puts the original amount back.
+function _ymAdd(ym, n) { let y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)) - 1 + n; y += Math.floor(m / 12); m = ((m % 12) + 12) % 12; return y + '-' + String(m + 1).padStart(2, '0'); }
+function _ymDiff(a, b) { return (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + (Number(b.slice(5, 7)) - Number(a.slice(5, 7))); }
+function _ymDate(ym, day) { const last = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate(); return ym + '-' + String(Math.min(Number(day) || 1, last)).padStart(2, '0'); }
+function recurringEveryMonths(it) { return Number(it.everyMonths) > 0 ? Number(it.everyMonths) : it.freq === 'quarterly' ? 3 : it.freq === 'yearly' ? 12 : it.freq === 'bimonthly' ? 2 : 1; }
+// Due dates of one item inside [fromIso, toIso]; only items with a `day`, never before the item's startFrom.
+function recurringDueDates(it, fromIso, toIso) {
+  const day = Math.round(Number(it.day));
+  if (!(day >= 1 && day <= 31) || !fromIso || !toIso) return [];
+  const every = recurringEveryMonths(it), anchor = /^\d{4}-\d{2}$/.test(it.anchor || '') ? it.anchor : String(it.startFrom || fromIso).slice(0, 7);
+  const out = [];
+  for (let ym = fromIso.slice(0, 7); ym <= toIso.slice(0, 7); ym = _ymAdd(ym, 1)) {
+    if (((_ymDiff(anchor, ym) % every) + every) % every !== 0) continue;
+    const d = _ymDate(ym, day);
+    if (d >= fromIso && d <= toIso && (!it.startFrom || d >= it.startFrom)) out.push(d);
+  }
+  return out;
+}
+function _newExpenseRow(o) {
+  const t = { type: 'expense', stage: 'paid', noVat: true, customer: '', notes: '', payment: '', partnerName: '', partnerAmount: 0, materials: 0, hours: 0, createdAt: Date.now(), ...o };
+  applyTxStage(t, 'paid'); t.paidDate = t.date; return t;
+}
+// Engine: enters the automatic expenses that are due (catch-up, once each) and creates the reminders for the coming due dates (the next 35 days, one each).
+function runScheduledExpenses(todayIso) {
+  const out = { expenses: [], reminders: [] };
+  if (!isAdmin() || !todayIso) return out;
+  const gone = new Set(state._deletedIds || []);
+  const has = new Set([...state.tx.map(t => t.id), ...state.tasks.map(t => t.id)]);
+  const horizon = _ymDate(_ymAdd(todayIso.slice(0, 7), 1), 28) < addDaysISO(todayIso, 35) ? _ymDate(_ymAdd(todayIso.slice(0, 7), 1), 28) : addDaysISO(todayIso, 35);
+  recurringItems().forEach(it => {
+    if (!it.day) return;
+    if (it.auto && Number(it.amount) > 0) {
+      recurringDueDates(it, it.startFrom || todayIso, todayIso).forEach(d => {
+        const id = 'rec_' + it.id + '_' + d.slice(0, 7);
+        if (has.has(id) || gone.has(id)) return;
+        const row = _newExpenseRow({ id, date: d, total: Number(it.amount), category: it.category || 'שונות', work: it.name, recurringId: it.id, autoCreated: true });
+        row.createdAt = Date.now(); state.tx.push(row); has.add(id); out.expenses.push(row);
+      });
+    }
+    if (it.remind) {
+      recurringDueDates(it, todayIso, horizon).forEach(d => {
+        const id = 'rem_' + it.id + '_' + d.slice(0, 7);
+        if (has.has(id) || gone.has(id)) return;
+        const note = it.auto && Number(it.amount) > 0 ? `נרשמת אוטומטית בהוצאות (${fmt(Number(it.amount))}₪)` : 'לרשום בהוצאות את הסכום ששולם';
+        const task = { id, kind: 'reminder', task: it.name, customer: '', address: '', phone: '', deadline: d, status: 'open', notes: note, cost: 0, materials: 0, hours: 0, myShare: 0, partnerAmount: 0, partnerName: '', whoseCustomer: 'mine', recurringId: it.id, createdAt: Date.now() };
+        task.createdAt = Date.now(); state.tasks.push(task); has.add(id); out.reminders.push(task);
+      });
+    }
+  });
+  return out;
+}
+// One-time (per device-less flag in the config): the two salaries — Asher's monthly 2nd (automatic) and Yechiel's every second month on the 15th (reminder).
+async function ensureSalaryItems() {
+  if (!isAdmin() || !state.config || state.config.recurringSalariesAt) return;
+  const today = todayISO();
+  const base = (Array.isArray(state.config.recurringExpenses) ? state.config.recurringExpenses : defaultRecurringItems()).filter(x => x.id !== 'def_משיכת משכורת' && x.id !== 'rec_salary_asher' && x.id !== 'rec_salary_yechiel');
+  const items = [...base,
+    { id: 'rec_salary_asher', name: 'משכורת לאשר', category: 'משיכת משכורת', amount: 2500, freq: 'monthly', everyMonths: 1, day: 2, auto: true, remind: true, startFrom: today },
+    { id: 'rec_salary_yechiel', name: 'משכורת ליחיאל', category: 'משיכת משכורת', amount: null, freq: 'bimonthly', everyMonths: 2, anchor: '2026-10', day: 15, auto: false, remind: true, startFrom: today }];
+  await saveConfig({ recurringExpenses: items, recurringSalariesAt: Date.now() });
+}
+function spreadExpense(id, months, fromYM, todayIso) {
+  const t = state.tx.find(x => x.id === id);
+  months = Math.round(Number(months));
+  if (!t || t.type !== 'expense' || !(months >= 2 && months <= 36) || !isAdmin()) return false;
+  const day = Number(String(t.date || '').slice(8, 10)) || 1, from = /^\d{4}-\d{2}$/.test(fromYM || '') ? fromYM : String(t.date || todayISO()).slice(0, 7);
+  const whole = Number(t.spreadTotal) > 0 ? Number(t.spreadTotal) : Number(t.total) || 0;
+  if (!(whole > 0)) return false;
+  (state.tx.filter(x => x.spreadOf === id)).forEach(x => { state.tx.splice(state.tx.indexOf(x), 1); markDeleted(x.id); });   // re-spreading starts clean
+  t.spreadTotal = whole; t.spreadMonths = months; t.spreadFrom = from; t.spreadDay = day;
+  t.date = _ymDate(from, day); t.paidDate = t.date; t.total = Math.round(whole / months * 100) / 100; t.spreadIndex = 1;
+  ensureSpreadPortions(todayIso || todayISO());
+  return true;
+}
+function unspreadExpense(id) {
+  const t = state.tx.find(x => x.id === id);
+  if (!t || !(Number(t.spreadMonths) >= 2) || !isAdmin()) return false;
+  state.tx.filter(x => x.spreadOf === id).forEach(x => { state.tx.splice(state.tx.indexOf(x), 1); markDeleted(x.id); });
+  t.total = Number(t.spreadTotal) || t.total;
+  ['spreadTotal', 'spreadMonths', 'spreadFrom', 'spreadDay', 'spreadIndex'].forEach(k => delete t[k]);
+  return true;
+}
+// Portions of the months that have arrived (date ≤ today); the last portion takes the rounding remainder so the parts add up to the whole exactly.
+function ensureSpreadPortions(todayIso) {
+  const made = [];
+  const gone = new Set(state._deletedIds || []), have = new Set(state.tx.map(t => t.id));
+  state.tx.filter(t => t.type === 'expense' && Number(t.spreadMonths) >= 2 && !t.spreadOf && t.spreadFrom).forEach(t => {
+    const n = Number(t.spreadMonths), whole = Number(t.spreadTotal) || 0, part = Math.round(whole / n * 100) / 100, day = Number(t.spreadDay) || 1;
+    for (let k = 2; k <= n; k++) {
+      const date = _ymDate(_ymAdd(t.spreadFrom, k - 1), day), id = `spread_${t.id}_${k}`;
+      if (date > todayIso) break;
+      if (have.has(id) || gone.has(id)) continue;
+      const row = _newExpenseRow({ id, date, total: k === n ? Math.round((whole - part * (n - 1)) * 100) / 100 : part, category: t.category, work: t.work, notes: t.notes || '', payment: t.payment || '', spreadOf: t.id, spreadIndex: k, spreadMonths: n });
+      row.createdAt = Date.now(); state.tx.push(row); have.add(id); made.push(row);
+    }
+  });
+  return made;
+}
+// One-time: the two insurance payments of 6.10 (compulsory 2,286 + comprehensive 7,496) spread over 12 months from October — not backwards (Asher 26.10).
+async function migrateInsuranceSpread() {
+  if (!isAdmin() || !state.config || state.config.insuranceSpreadAt) return false;
+  const ids = ['xq2gm6pee8sks', 'x2gj7euo098sk'], rows = ids.map(id => state.tx.find(t => t.id === id));
+  if (rows.some(t => !t || t.type !== 'expense')) return false;      // not on this book — try again later
+  if (!(await saveConfig({ insuranceSpreadAt: Date.now() }))) return false;
+  snapshotState('פיזור ביטוח על 12 חודשים');
+  ids.forEach(id => { if (!(Number(state.tx.find(t => t.id === id).spreadMonths) >= 2)) spreadExpense(id, 12, '2026-10'); });
+  saveState(); render();
+  toast('📆 ביטוח חובה ומקיף פוזרו על 12 חודשים מאוקטובר');
+  return true;
+}
+async function runScheduledEngines() {
+  if (!isAdmin() || !state.currentUser || state._bootPending || !state.config) return;
+  try {
+    await ensureSalaryItems(); await migrateInsuranceSpread();
+    try { renderRecurringExpensesSettings(); } catch (_) {}
+    const today = todayISO(), a = runScheduledExpenses(today), b = ensureSpreadPortions(today);
+    if (a.expenses.length || a.reminders.length || b.length) {
+      saveState(); render();
+      const parts = [a.expenses.length ? `${a.expenses.length} הוצאות קבועות נרשמו` : '', b.length ? `${b.length} חלקי פיזור נרשמו` : '', a.reminders.length ? `${a.reminders.length} תזכורות נוספו` : ''].filter(Boolean);
+      toast('📌 ' + parts.join(' · '));
+    }
+  } catch (e) { console.warn('scheduled expenses', e); }
 }
 function quickAddExpense(cat, amount, name, recId) {
   setView('add');
@@ -6113,7 +6227,7 @@ function renderRecurringExpensesSettings() {
   const shown = items || defaultRecurringItems();
   host.innerHTML = (items ? '' : '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px;">ברירת מחדל (חודשיות). הוספה או עריכה יוצרות רשימה משלך.</div>') + shown.map(it => `
     <div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--border);${it.off ? 'opacity:.5;' : ''}">
-      <div style="flex:1;min-width:0;"><b>${escapeHtml(it.name)}</b> <span style="font-size:12px;color:var(--text-tertiary);">· ${RECURRING_FREQ_LABEL[it.freq] || RECURRING_FREQ_LABEL.monthly}${it.freq === 'yearly' ? ' (חודש ' + (it.month || 1) + ')' : ''}${it.amount ? ' · ' + fmt(it.amount) + '₪' : ''}</span></div>
+      <div style="flex:1;min-width:0;"><b>${escapeHtml(it.name)}</b> <span style="font-size:12px;color:var(--text-tertiary);">· ${RECURRING_FREQ_LABEL[it.freq] || RECURRING_FREQ_LABEL.monthly}${it.freq === 'yearly' ? ' (חודש ' + (it.month || 1) + ')' : ''}${it.day ? ' · ב-' + it.day + ' לחודש' : ''}${it.amount ? ' · ' + fmt(it.amount) + '₪' : ''}${it.auto ? ' · נרשם אוטומטית' : ''}${it.remind ? ' · עם תזכורת' : ''}</span></div>
       <button class="btn btn-sm btn-ghost" data-rec-edit="${escapeAttr(it.id)}">✏️</button>
       <button class="btn btn-sm btn-ghost" data-rec-del="${escapeAttr(it.id)}" aria-label="מחיקה">🗑</button>
     </div>`).join('');
@@ -6127,19 +6241,35 @@ function openRecurringForm(id) {
       { name: 'name', label: 'שם (למשל: ביטוח רכב, ארנונה, אגרת רישוי)', type: 'text', value: cur ? cur.name : '', required: true },
       { name: 'category', label: 'קטגוריה', type: 'select', value: cur ? cur.category : 'שונות', options: EXPENSE_CATEGORIES.map(c => ({ value: c, label: c })) },
       { name: 'amount', label: 'סכום רגיל ₪ (לא חובה — יתמלא מראש)', type: 'number', value: cur && cur.amount ? cur.amount : '' },
-      { name: 'freq', label: 'כל כמה זמן', type: 'chips', value: cur ? (cur.freq || 'monthly') : 'monthly', options: [{ value: 'monthly', label: 'כל חודש' }, { value: 'quarterly', label: 'כל 3 חודשים' }, { value: 'yearly', label: 'פעם בשנה' }] },
-      { name: 'month', label: 'בשנתי: באיזה חודש (1-12)', type: 'number', value: cur && cur.month ? cur.month : '' }
+      { name: 'freq', label: 'כל כמה זמן', type: 'chips', value: cur ? (cur.freq || 'monthly') : 'monthly', options: [{ value: 'monthly', label: 'כל חודש' }, { value: 'bimonthly', label: 'כל חודשיים' }, { value: 'quarterly', label: 'כל 3 חודשים' }, { value: 'yearly', label: 'פעם בשנה' }] },
+      { name: 'month', label: 'בשנתי: באיזה חודש (1-12)', type: 'number', value: cur && cur.month ? cur.month : '' },
+      { name: 'day', label: 'יום בחודש (1-31) — לרישום אוטומטי ולתזכורת (לא חובה)', type: 'number', value: cur && cur.day ? cur.day : '' },
+      { name: 'auto', label: 'לרשום לבד בהוצאות ביום הזה? (דורש סכום)', type: 'chips', value: cur && cur.auto ? 'yes' : 'no', options: [{ value: 'no', label: 'לא' }, { value: 'yes', label: 'כן' }] },
+      { name: 'remind', label: 'להוסיף תזכורת?', type: 'chips', value: cur && cur.remind ? 'yes' : 'no', options: [{ value: 'no', label: 'לא' }, { value: 'yes', label: 'כן' }] }
     ],
     submitLabel: 'שמור',
     onSubmit: async (v) => {
       const name = (v.name || '').trim(); if (!name) { toast('חסר שם'); return false; }
       const month = Math.min(12, Math.max(1, Math.round(Number(v.month) || 1)));
-      const item = { id: cur ? cur.id : 'rec_' + uid(), name, category: v.category || 'שונות', amount: Number(v.amount) > 0 ? Number(v.amount) : null, freq: v.freq || 'monthly', ...(v.freq === 'yearly' ? { month } : {}) };
+      const item = { id: cur ? cur.id : 'rec_' + uid(), name, category: v.category || 'שונות', amount: Number(v.amount) > 0 ? Number(v.amount) : null, freq: v.freq || 'monthly', ...(v.freq === 'yearly' ? { month } : {}),
+        ...(Math.round(Number(v.day)) >= 1 ? { day: Math.min(31, Math.round(Number(v.day))), auto: v.auto === 'yes' && Number(v.amount) > 0, remind: v.remind === 'yes', everyMonths: v.freq === 'bimonthly' ? 2 : v.freq === 'quarterly' ? 3 : v.freq === 'yearly' ? 12 : 1,
+          anchor: (cur && cur.anchor) || todayISO().slice(0, 7), startFrom: (cur && cur.startFrom) || todayISO() } : {}) };
       const next = cur ? items.map(x => x.id === cur.id ? item : x) : [...items, item];
       if (await saveConfig({ recurringExpenses: next })) { toast('✅ נשמר'); renderRecurringExpensesSettings(); render(); }
     }
   });
 }
+document.addEventListener('click', e => {
+  const sp = e.target.closest && e.target.closest('[data-spread-expense]'), un = e.target.closest && e.target.closest('[data-unspread-expense]');
+  if (sp) {
+    const id = sp.dataset.spreadExpense, t = state.tx.find(x => x.id === id); if (!t) return;
+    openFormModal({ title: `📆 פיזור הוצאה — ${t.work || t.category || ''} ${fmt(t.total)}₪`, intro: 'הסכום מתחלק שווה בשווה בין החודשים, החל מהחודש שנבחר. חודשים שעברו לפני כן לא נרשמים, וחלקי החודשים הבאים יירשמו לבד כשהחודש מגיע.',
+      fields: [{ name: 'months', label: 'על כמה חודשים?', type: 'number', value: 12, required: true }, { name: 'from', label: 'מחודש (שנה-חודש, למשל 2026-10)', type: 'text', value: String(t.date || todayISO()).slice(0, 7), required: true }], submitLabel: 'פזר',
+      onSubmit: (v) => { snapshotState('פיזור הוצאה'); if (!spreadExpense(id, v.months, String(v.from || '').trim())) { toast('לא הצלחתי לפזר — בדוק מספר חודשים (2–36) וחודש'); return false; } saveState(); render(); toast('📆 ההוצאה פוזרה'); } });
+    return;
+  }
+  if (un) { if (!confirm('לבטל את הפיזור ולהחזיר את ההוצאה לסכום המלא בחודש אחד?')) return; snapshotState('ביטול פיזור'); if (unspreadExpense(un.dataset.unspreadExpense)) { saveState(); render(); toast('↩️ הפיזור בוטל'); document.getElementById('editModal').classList.remove('show'); } }
+});
 document.addEventListener('click', async e => {
   if (e.target.closest && e.target.closest('#addRecurringBtn')) { openRecurringForm(null); return; }
   const ed = e.target.closest && e.target.closest('[data-rec-edit]'); if (ed) { openRecurringForm(ed.dataset.recEdit); return; }
@@ -9116,6 +9246,7 @@ async function loadConfig() {
     fillConfigForm();
     render();
     resetWorkCategoriesOnce().catch(() => {});
+    runScheduledEngines().catch(() => {});
   } catch (e) { console.warn('config load failed', e); }
 }
 async function saveConfig(patch) {
@@ -10065,7 +10196,7 @@ function renderTx() {
       const stage = t.type === 'expense' ? 'expense' : txStage(t);
       const pOnly = isNamelessPartnerTx(t);
       const name = escapeHtml(pOnly ? t.partnerName.trim() : (t.customer || t.work || (t.partnerName ? 'שותפות · ' + t.partnerName : 'ללא שם'))) + (pOnly ? PARTNER_TAG_HTML : '');
-      const sub = [(t.customer || pOnly) && t.work ? escapeHtml(t.work) : '', shortDate(t.date), t.payment ? escapeHtml(t.payment) : ''].filter(Boolean).join(' · ');
+      const sub = [(t.customer || pOnly) && t.work ? escapeHtml(t.work) : '', shortDate(t.date), t.payment ? escapeHtml(t.payment) : '', t.type === 'expense' && Number(t.spreadMonths) >= 2 ? `📆 פיזור ${Number(t.spreadIndex) || 1}/${t.spreadMonths}` : '', t.autoCreated ? '🔁 נרשם אוטומטית' : ''].filter(Boolean).join(' · ');
       const yShare = yehudaShare(t);
       const partial = partialPaymentText(t);
       const missing = missingFields(t);
@@ -11833,8 +11964,31 @@ function reportFigures(period) {
   return { F, txAll, income, expenses, paid, workDone, grossOf, partnerCutOf };
 }
 
+// The five numbers of the financial summary (Asher 26.10) for the jobs DONE in the period: הכנסות − הוצאות = רווח סופי; נגבה + לגבייה = הכנסות.
+function reportFiveFigures(F) {
+  const income = F.allIn, expenses = F.allOut, paid = F.allMinePaid + F.allPartnersPaid;
+  return { income, expenses, net: income - expenses, collected: paid, toCollect: income - paid, partners: F.allToPartners, materials: F.materials, otherExpenses: F.expenses, openAllTime: F.openBalance };
+}
+function reportFiveHTML(F, periodLabel) {
+  const v = reportFiveFigures(F), money = x => `${fmt(x)}₪`;
+  const row = (icon, label, amount, color, sub, strong) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:${strong ? '20px 18px' : '16px 18px'};${strong ? 'background:var(--brand-soft, rgba(14,77,58,.08));' : ''}border-top:1px solid var(--border);">
+      <div style="min-width:0;"><div style="font-size:${strong ? '19px' : '16px'};font-weight:${strong ? '800' : '700'};">${icon} ${label}</div>${sub ? `<div style="font-size:12px;color:var(--text-tertiary);margin-top:3px;">${sub}</div>` : ''}</div>
+      <div class="mono" style="font-size:${strong ? '30px' : '24px'};font-weight:800;color:${color};white-space:nowrap;">${money(amount)}</div>
+    </div>`;
+  return `<div class="panel" style="margin-bottom:16px;overflow:hidden;">
+    <div class="panel-header"><div class="panel-title">סיכום כספי — ${escapeHtml(periodLabel)}</div></div>
+    <div style="padding:0;">
+      ${row('💰', 'הכנסות', v.income, 'var(--success)', 'כל העבודות שבוצעו בתקופה (שולמו או לא)')}
+      ${row('📤', 'הוצאות', v.expenses, 'var(--danger)', `חלק שותפים ${money(v.partners)} · חומרים ${money(v.materials)} · הוצאות ${money(v.otherExpenses)}`)}
+      ${row('✅', 'רווח סופי', v.net, v.net >= 0 ? 'var(--success)' : 'var(--danger)', 'הכנסות פחות הוצאות', true)}
+      ${row('📥', 'נגבה', v.collected, 'var(--success)', 'מתוך ההכנסות — כסף שכבר נכנס')}
+      ${row('⏳', 'לגבייה', v.toCollect, 'var(--warning)', `מתוך ההכנסות — עוד לא שולם${Math.abs(v.openAllTime - v.toCollect) > 0.5 ? ` · סה"כ חובות פתוחים (כל התקופות): ${money(v.openAllTime)}` : ''}`)}
+    </div></div>`;
+}
 function renderFullReportPanels(period, periodLabel) {
   const { F, txAll, income, expenses, paid, workDone, grossOf, partnerCutOf } = reportFigures(period);
+  const fiveEl = document.getElementById('reportsFive'); if (fiveEl) fiveEl.innerHTML = reportFiveHTML(F, periodLabel);
   const today = todayISO();
   const money = v => fmt(v) + '₪';
   const setLbl = id => { const el = document.getElementById(id); if (el) el.textContent = periodLabel; };
@@ -14861,6 +15015,9 @@ function openEditTx(id) {
   body.innerHTML = `
     <div class="form-grid">
       ${isAdmin() ? `<div class="field span-2"><button type="button" class="btn btn-ghost" onclick="openTxHistory('${escapeAttr(t.id)}')">📜 היסטוריית שינויים</button></div>` : ''}
+      ${isAdmin() && t.type === 'expense' && !t.spreadOf ? (Number(t.spreadMonths) >= 2
+        ? `<div class="field span-2"><button type="button" class="btn btn-ghost" data-unspread-expense="${escapeAttr(t.id)}">↩️ בטל פיזור (פיזור 1/${t.spreadMonths} של ${fmt(t.spreadTotal)}₪)</button></div>`
+        : `<div class="field span-2"><button type="button" class="btn btn-ghost" data-spread-expense="${escapeAttr(t.id)}">📆 פזר הוצאה על כמה חודשים</button></div>`) : ''}
       <div class="field"><label>תאריך</label><input type="date" name="date" value="${escapeAttr(t.date)}"></div>
       <div class="field"><label>סוג</label><select name="type"><option value="income" ${t.type==='income'?'selected':''}>הכנסה</option><option value="expense" ${t.type==='expense'?'selected':''}>הוצאה</option></select></div>
       <div class="field span-2"><label>עבודה</label><input type="text" name="work" value="${escapeHtml(t.work||'')}"></div>

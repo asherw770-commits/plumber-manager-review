@@ -52,6 +52,11 @@ app.state.customerMeta = clean; app.state.tx = [{ id: 'z1', type: 'income', cust
 const sheets = app.buildExportSheets(), allCells = JSON.stringify(sheets);
 expect(!/IMPORTDATA/.test(allCells), 'no formula text from customerMeta reaches the export');
 
+// 5b. spread-expense fields are numbers / a month, never markup (they are printed into the edit form and the list)
+const [sp] = app.safeRows([{ id: 'sp1', type: 'expense', total: 100, spreadMonths: X, spreadTotal: X, spreadIndex: X, spreadFrom: X }]);
+expect(!('spreadFrom' in sp) && !('spreadMonths' in sp) && sp.spreadTotal === 0 && sp.spreadIndex === 0, 'a spread with a markup month is dropped, markup numbers become 0: ' + JSON.stringify(sp));
+const [sp3] = app.safeRows([{ id: 'sp3', type: 'expense', total: 100, spreadMonths: X, spreadFrom: '2026-10' }]); expect(sp3.spreadMonths === 0, 'markup in the month count becomes 0');
+const [sp2] = app.safeRows([{ id: 'sp2', type: 'expense', total: 100, spreadMonths: 12, spreadTotal: 1200, spreadFrom: '2026-10' }]); expect(sp2.spreadMonths === 12 && sp2.spreadFrom === '2026-10', 'honest spread fields pass');
 // 6. work keys and category names
 const key = lib.workKey('א'.repeat(79) + '😀'); expect(key.length <= 80 && !/[\ud800-\udbff]$/.test(key), 'server workKey never ends in half an emoji');
 expect(app.workKey('א'.repeat(79) + '😀') === key, 'client and server keys stay equal');
